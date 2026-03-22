@@ -1,0 +1,21 @@
+{
+  "document_repository": {
+    "provider": "local_disk",
+    "mode": "per-client-local-folders",
+    "client_documents_root": "C:\\Users\\Dimple Badhan\\Documents\\New project 9\\db-agent-local-app\\local-processing-store\\clients",
+    "archive_reference": "https://drive.google.com/drive/u/0/my-drive",
+    "notes": [
+      "Client documents are now stored locally inside each client workspace under 'Client Documents'.",
+      "The Google Drive link is retained only as an optional external archive reference.",
+      "DB Agent uses local disk as the canonical document and processing store."
+    ]
+  },
+  "processing_store": {
+    "provider": "local_disk",
+    "root_path": "C:\\Users\\Dimple Badhan\\Documents\\New project 9\\db-agent-local-app\\local-processing-store",
+    "clients_path": "C:\\Users\\Dimple Badhan\\Documents\\New project 9\\db-agent-local-app\\local-processing-store\\clients",
+    "jobs_path": "C:\\Users\\Dimple Badhan\\Documents\\New project 9\\db-agent-local-app\\local-processing-store\\jobs",
+    "exports_path": "C:\\Users\\Dimple Badhan\\Documents\\New project 9\\db-agent-local-app\\local-processing-store\\exports",
+    "audit_logs_path": "C:\\Users\\Dimple Badhan\\Documents\\New project 9\\db-agent-local-app\\local-processing-store\\audit-logs"
+  }
+}

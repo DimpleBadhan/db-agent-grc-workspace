@@ -1,0 +1,86 @@
+{
+  "version": "2026-03-22",
+  "mode": "local-api",
+  "description": "Prompt registry for DB Agent local workflows. The app loads metadata from the registry and prompt text through local API endpoints.",
+  "prompts": [
+    {
+      "id": "policy-generation-agent",
+      "name": "Policy Generation Agent",
+      "category": "generation",
+      "purpose": "Master policy-generation standard for turning stored templates into company-specific, context-aware, audit-ready policies.",
+      "relative_path": "prompts/generation/policy_generation_agent.txt",
+      "phases": ["policy-generation"]
+    },
+    {
+      "id": "context-analyzer-agent",
+      "name": "Context Analyzer",
+      "category": "generation",
+      "purpose": "Stage 1 analysis of company context, risk profile, maturity expectations, and critical context signals before artifact generation.",
+      "relative_path": "prompts/generation/context_analyzer_agent.txt",
+      "phases": ["policy-generation", "risk-assessment", "vendor-risk"]
+    },
+    {
+      "id": "control-strategy-engine",
+      "name": "Control Strategy Engine",
+      "category": "generation",
+      "purpose": "Stage 2 selection of applicable control themes and company-scaled operational expectations.",
+      "relative_path": "prompts/generation/control_strategy_engine.txt",
+      "phases": ["policy-generation", "risk-assessment", "vendor-risk"]
+    },
+    {
+      "id": "output-generator-agent",
+      "name": "Output Generator",
+      "category": "generation",
+      "purpose": "Stage 3 artifact-generation prompt focused on narrative, differentiated, company-specific output quality.",
+      "relative_path": "prompts/generation/output_generator_agent.txt",
+      "phases": ["policy-generation", "risk-assessment", "vendor-risk"]
+    },
+    {
+      "id": "policy-qa-agent",
+      "name": "Policy QA Agent",
+      "category": "qa",
+      "purpose": "Validate generated policies for enforceability, placeholders, mapping quality, and policy QA checks.",
+      "relative_path": "prompts/qa/policy_qa_agent.txt",
+      "phases": ["policy-qa", "audit-qa"]
+    },
+    {
+      "id": "risk-qa-agent",
+      "name": "Risk QA Agent",
+      "category": "qa",
+      "purpose": "Validate risk record quality, scoring consistency, and treatment logic.",
+      "relative_path": "prompts/qa/risk_qa_agent.txt",
+      "phases": ["risk-assessment", "audit-qa"]
+    },
+    {
+      "id": "vendor-qa-agent",
+      "name": "Vendor QA Agent",
+      "category": "qa",
+      "purpose": "Validate vendor assessment completeness, criticality, and evidence consistency.",
+      "relative_path": "prompts/qa/vendor_qa_agent.txt",
+      "phases": ["vendor-risk", "audit-qa"]
+    },
+    {
+      "id": "risk-management-assistant",
+      "name": "Risk Management Assistant",
+      "category": "assessment",
+      "purpose": "Primary assessment prompt for structured risk assessment generation.",
+      "relative_path": "prompts/assessments/risk_management_assistant.txt",
+      "phases": ["risk-assessment"]
+    },
+    {
+      "id": "vendor-risk-assessment-agent",
+      "name": "Vendor Risk Assessment Agent",
+      "category": "assessment",
+      "purpose": "Primary assessment prompt for vendor risk classification and treatment planning.",
+      "relative_path": "prompts/assessments/vendor_risk_assessment_agent.txt",
+      "phases": ["vendor-risk"]
+    }
+  ],
+  "phase_bindings": {
+    "policy-generation": ["policy-generation-agent", "context-analyzer-agent", "control-strategy-engine", "output-generator-agent"],
+    "policy-qa": ["policy-qa-agent"],
+    "risk-assessment": ["context-analyzer-agent", "control-strategy-engine", "output-generator-agent", "risk-management-assistant", "risk-qa-agent"],
+    "vendor-risk": ["context-analyzer-agent", "control-strategy-engine", "output-generator-agent", "vendor-risk-assessment-agent", "vendor-qa-agent"],
+    "audit-qa": ["policy-qa-agent", "risk-qa-agent", "vendor-qa-agent"]
+  }
+}

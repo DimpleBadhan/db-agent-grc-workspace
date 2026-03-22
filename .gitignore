@@ -12,3 +12,15 @@ Desktop.ini
 
 # Local Python server cache
 __pycache__/
+
+# Private compliance source material
+compliance_inputs/policy_templates/**
+!compliance_inputs/policy_templates/README.md
+compliance_inputs/frameworks/**
+!compliance_inputs/frameworks/**/README.md
+
+# Local runtime data
+db-agent-local-app/local-processing-store/
+db-agent-local-app/framework-cache/
+db-agent-local-app/template-cache/
+db-agent-local-app/response-errors.log

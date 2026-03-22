@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DB Agent Workspace</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="screen-noise" aria-hidden="true"></div>
+    <div class="app-shell">
+      <header class="topbar panel">
+        <div class="brand-block">
+          <p class="brand-kicker">STRUCTURED COMPLIANCE LIFECYCLE</p>
+          <h1>DB Agent</h1>
+          <p class="brand-subtitle">
+            Framework-first compliance workflows for onboarding, policies, risks,
+            vendors, and audit readiness.
+          </p>
+        </div>
+        <div class="topbar-status">
+          <div class="status-chip">
+            <span class="dot dot-live"></span>
+            Client workspace
+          </div>
+          <div class="status-chip">
+            <span class="dot"></span>
+            Framework-led onboarding
+          </div>
+          <div class="status-chip">
+            <span class="dot"></span>
+            Linked policies, risks, and controls
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace-shell">
+        <section class="workspace">
+          <div id="empty-state" class="panel empty-state">
+            <div class="launcher-shell">
+              <div class="launcher-intro">
+                <p class="section-label">Client access</p>
+                <h2>Open an existing client or create a new workspace.</h2>
+                <p>
+                  Keep each client in its own browser tab. Existing clients open in a new tab so you can switch between workspaces without losing context.
+                </p>
+              </div>
+
+              <div id="launcher-feedback" class="launcher-feedback hidden"></div>
+
+              <div class="launcher-grid">
+                <form id="existing-client-form" class="launcher-card">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-label">Existing client</p>
+                      <h3>Open in new tab</h3>
+                    </div>
+                    <span id="client-count" class="small-chip">0</span>
+                  </div>
+                  <label for="existing-client-name">Search existing client</label>
+                  <div class="create-row">
+                    <input
+                      id="existing-client-name"
+                      name="existingClientName"
+                      type="text"
+                      list="existing-client-suggestions"
+                      placeholder="Start typing a client name"
+                      autocomplete="off"
+                    />
+                    <datalist id="existing-client-suggestions"></datalist>
+                    <button id="existing-client-action" type="submit" class="action-button">Open</button>
+                  </div>
+                  <p id="existing-client-help" class="field-help">
+                    Search stored clients and open the selected workspace in a new tab.
+                  </p>
+                  <div id="existing-client-status" class="launcher-status hidden"></div>
+                </form>
+
+                <form id="create-client-form" class="launcher-card">
+                  <div class="panel-head compact">
+                    <div>
+                      <p class="section-label">New client</p>
+                      <h3>Create workspace</h3>
+                    </div>
+                  </div>
+                  <label for="new-client-name">Client name</label>
+                  <div class="create-row create-row-single">
+                    <input
+                      id="new-client-name"
+                      name="newClientName"
+                      type="text"
+                      placeholder="Enter the new client name"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <p id="create-client-help" class="field-help">
+                    Create a new client workspace in this tab.
+                  </p>
+                  <div class="launcher-actions">
+                    <button id="create-client-action" type="submit" class="action-button">Create Client</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div id="workspace-view" class="workspace-view hidden">
+            <section class="panel workspace-header">
+              <div class="panel-head">
+                <div>
+                  <p class="section-label">Client</p>
+                  <h2 id="workspace-company">Client workspace</h2>
+                </div>
+                <div class="workspace-head-right">
+                  <div id="workspace-actions" class="workspace-actions"></div>
+                  <div id="workspace-stats" class="stat-row"></div>
+                </div>
+              </div>
+
+              <div class="workspace-grid">
+                <article class="info-card hero-card">
+                  <p class="section-label">Overview</p>
+                  <p class="workspace-copy">
+                    Start with framework selection, complete onboarding, and
+                    progress through each client workflow in order.
+                  </p>
+                  <div id="save-status" class="save-status">Ready</div>
+                </article>
+                <article class="info-card tracker-card">
+                  <p class="section-label">Progress Tracker</p>
+                  <div id="workflow-status-grid" class="workflow-status-grid"></div>
+                </article>
+              </div>
+            </section>
+
+            <section class="panel tabs-panel">
+              <div id="tab-nav" class="tab-nav"></div>
+              <div id="active-tab-panel"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/client-app.js"></script>
+  </body>
+</html>

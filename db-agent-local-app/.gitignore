@@ -1,0 +1,7 @@
+data/clients/*
+!data/clients/.gitkeep
+*.log
+local-processing-store/
+framework-cache/
+template-cache/
+response-errors.log

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DB agent</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="screen-noise" aria-hidden="true"></div>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <p class="brand-kicker">GRC SYSTEM BUILDER</p>
+          <h1>DB agent</h1>
+          <p class="brand-subtitle">
+            Cyberpunk compliance workspace for onboarding, policy generation,
+            risk, controls, evidence, and audit readiness.
+          </p>
+        </div>
+        <div class="topbar-status">
+          <div class="status-chip">
+            <span class="dot dot-live"></span>
+            Public-safe repo
+          </div>
+          <div class="status-chip">
+            <span class="dot"></span>
+            Local source files excluded
+          </div>
+          <div class="status-chip">
+            <span class="dot"></span>
+            GitHub Pages ready
+          </div>
+        </div>
+      </header>
+
+      <main class="grid-layout">
+        <section class="hero panel">
+          <div class="hero-copy">
+            <p class="section-label">System chain</p>
+            <h2>Onboarding gates the whole machine.</h2>
+            <p>
+              Policy generation, risk, vendor review, controls, evidence, and
+              audit outputs stay blocked until missing company, asset, and
+              vendor inputs are supplied.
+            </p>
+          </div>
+          <div class="hero-metrics">
+            <article class="metric-card">
+              <span class="metric-value">03</span>
+              <span class="metric-label">stored framework assets</span>
+            </article>
+            <article class="metric-card">
+              <span id="missing-groups-count" class="metric-value">05</span>
+              <span class="metric-label">missing onboarding groups</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-value">08</span>
+              <span class="metric-label">phase chain modules</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="intake panel">
+          <div class="section-head">
+            <div>
+              <p class="section-label">Client intake</p>
+              <h3>Phase 0 onboarding form</h3>
+            </div>
+            <div class="intake-actions">
+              <button id="copy-intake" type="button" class="action-button">
+                Copy intake JSON
+              </button>
+              <button id="download-intake" type="button" class="action-button">
+                Download JSON
+              </button>
+              <button id="reset-intake" type="button" class="action-button ghost">
+                Reset form
+              </button>
+            </div>
+          </div>
+
+          <p class="intake-lead">
+            This is the client-facing onboarding form. Fill this first. Policy
+            generation, risk, vendor review, controls, evidence, and audit work
+            stay blocked until this intake is complete enough to support them.
+          </p>
+
+          <div class="intake-layout">
+            <form id="onboarding-form" class="onboarding-form"></form>
+
+            <aside class="intake-sidebar">
+              <article class="sidebar-card">
+                <p class="section-label">Readiness</p>
+                <h4 id="readiness-title">Phase 0 in progress</h4>
+                <div class="progress-track" aria-hidden="true">
+                  <div id="readiness-bar" class="progress-fill"></div>
+                </div>
+                <p id="readiness-summary" class="sidebar-copy"></p>
+              </article>
+
+              <article class="sidebar-card">
+                <p class="section-label">Completion by group</p>
+                <ul id="section-status-list" class="status-list"></ul>
+              </article>
+
+              <article class="sidebar-card">
+                <p class="section-label">Export preview</p>
+                <pre id="intake-preview" class="preview-block"></pre>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <aside class="phase-rail panel">
+          <div class="rail-header">
+            <p class="section-label">Operational phases</p>
+            <p class="rail-caption">Select a phase to inspect its gate state.</p>
+          </div>
+          <nav id="phase-nav" class="phase-nav" aria-label="Compliance phases"></nav>
+        </aside>
+
+        <section class="phase-detail panel">
+          <div class="section-head">
+            <div>
+              <p class="section-label">Phase view</p>
+              <h3 id="phase-title">Phase 0: Onboarding</h3>
+            </div>
+            <div id="phase-status-badge" class="detail-badge">In progress</div>
+          </div>
+
+          <div class="detail-grid">
+            <article class="detail-card">
+              <h4>Required inputs</h4>
+              <ul id="phase-required" class="signal-list"></ul>
+            </article>
+            <article class="detail-card">
+              <h4>Current output</h4>
+              <ul id="phase-output" class="signal-list"></ul>
+            </article>
+            <article class="detail-card">
+              <h4>Validation state</h4>
+              <ul id="phase-validation" class="signal-list"></ul>
+            </article>
+            <article class="detail-card">
+              <h4>Unresolved gaps</h4>
+              <ul id="phase-gaps" class="signal-list"></ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="vault panel">
+          <div class="section-head">
+            <div>
+              <p class="section-label">Framework vault</p>
+              <h3>Public-safe intake notes</h3>
+            </div>
+          </div>
+
+          <div class="vault-grid">
+            <article class="vault-card">
+              <p class="vault-tag">Policy templates</p>
+              <h4>Template inventory only</h4>
+              <p>
+                Local template files are excluded from this public repository.
+                Only a safe inventory note is published here.
+              </p>
+              <a href="docs/policy-templates.md">Open public note</a>
+            </article>
+
+            <article class="vault-card">
+              <p class="vault-tag">ISO 27001</p>
+              <h4>Framework source note</h4>
+              <p>
+                The active workbook is referenced, but the actual Excel files
+                stay local and are not published in this repo.
+              </p>
+              <a href="docs/iso27001-framework.md">Open public note</a>
+            </article>
+
+            <article class="vault-card">
+              <p class="vault-tag">SOC 2</p>
+              <h4>Working basis only</h4>
+              <p>
+                No user file provided. Mapping basis recorded against standard
+                Trust Services Categories and criteria structure.
+              </p>
+              <a href="docs/soc2-basis.md">Open public note</a>
+            </article>
+          </div>
+        </section>
+
+        <section class="chain panel">
+          <div class="section-head">
+            <div>
+              <p class="section-label">Broken chain report</p>
+              <h3>Current blockers</h3>
+            </div>
+          </div>
+
+          <div class="chain-grid">
+            <article class="chain-card warning">
+              <span class="chain-code">B-01</span>
+              <h4>Company and product context missing</h4>
+              <p>
+                Policy generation cannot inject organization-specific language
+                or owners without core entity context.
+              </p>
+            </article>
+            <article class="chain-card warning">
+              <span class="chain-code">B-02</span>
+              <h4>Assets, data, and systems not onboarded</h4>
+              <p>
+                Risk scoring and control design remain blocked until critical
+                assets, data categories, threats, and tooling are identified.
+              </p>
+            </article>
+            <article class="chain-card warning">
+              <span class="chain-code">B-03</span>
+              <h4>Vendor inventory not provided</h4>
+              <p>
+                Third-party risk, DPA status, and vendor-linked controls cannot
+                be generated yet.
+              </p>
+            </article>
+            <article class="chain-card soft">
+              <span class="chain-code">A-01</span>
+              <h4>SOC 2 source file absent</h4>
+              <p>
+                Workable assumption recorded. Mapping can proceed on standard
+                SOC 2 structure, but exact licensed text is not stored locally.
+              </p>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

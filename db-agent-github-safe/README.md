@@ -1,22 +1,14 @@
 # DB agent
 
-This workspace now contains two app variants:
+Static cyberpunk UI for the DB agent compliance workspace.
 
-- `db-agent-local-app`
-  - Primary local app
-  - Client-centric
-  - Creates real company-named folders and structured JSON records on disk
-- `db-agent-github-safe`
-  - Public-safe static demo
-  - No local client persistence
-  - Safe to upload without `compliance_inputs`
+This is the public-safe GitHub upload version.
+Local compliance source files are intentionally excluded.
 
-The older root-level static files are the first-pass prototype.
+If you need real client-specific workspaces with company-named folders and
+structured records on disk, use the local app at:
 
-## Recommended use
-
-- Use `db-agent-local-app` when you want actual client workspaces and saved records
-- Use `db-agent-github-safe` when you want a static public-facing demo
+`C:\Users\Dimple Badhan\Documents\New project 9\db-agent-local-app`
 
 ## Run locally
 
@@ -40,6 +32,8 @@ Windows one-click options:
 - Double-click `run-local.bat`
 - Or run `.\run-local.ps1` from PowerShell
 
+If Python is not installed, the launcher opens `index.html` directly in your default browser.
+
 ## Deploy with GitHub Pages
 
 This repository includes a GitHub Actions workflow at `.github/workflows/deploy-pages.yml`.
@@ -54,6 +48,14 @@ This repository includes a GitHub Actions workflow at `.github/workflows/deploy-
 6. Open the `Actions` tab and wait for `Deploy static site to Pages` to finish.
 7. Your site will be published at the GitHub Pages URL shown in the workflow run.
 
+## Safe upload folder
+
+If you are uploading manually to GitHub, upload the contents of this folder only:
+
+`C:\Users\Dimple Badhan\Documents\New project 9\db-agent-github-safe`
+
+Do not upload `compliance_inputs` from the parent project if you want to keep local source materials private.
+
 ## Files
 
 - `index.html`: app entry point
@@ -61,6 +63,4 @@ This repository includes a GitHub Actions workflow at `.github/workflows/deploy-
 - `app.js`: phase and dashboard logic
 - `run-local.bat`: one-click local server for Windows
 - `run-local.ps1`: PowerShell local server launcher
-- `compliance_inputs/`: stored policy and framework intake materials
-- `db-agent-local-app/`: filesystem-backed client workspace app
-- `db-agent-github-safe/`: public-safe static demo
+- `docs/`: public-safe notes for template and framework status
