@@ -259,50 +259,6 @@ const phaseConfigs = [
     ]
   },
   {
-    key: "policy-qa",
-    label: "Policy QA",
-    phase: "Phase 1.5",
-    title: "Policy QA",
-    description: "QA agent step: check generated policies for hallucinations, completeness, enforceable language, placeholders, and framework alignment.",
-    property: "policyQa",
-    metaFields: [
-      { name: "qa_owner", label: "QA owner", type: "text" },
-      { name: "cleaned_policies_ref", label: "Cleaned policies reference", type: "text" },
-      { name: "qa_notes", label: "QA notes", type: "textarea", full: true }
-    ],
-    itemCollection: "findings",
-    itemLabel: "Validation finding",
-    itemFields: [
-      { name: "finding_id", label: "Finding ID", type: "text" },
-      { name: "policy_id", label: "Policy ID", type: "text" },
-      { name: "severity", label: "Severity", type: "select", options: ["", "Low", "Medium", "High", "Critical"] },
-      { name: "category", label: "Category", type: "text" },
-      { name: "details", label: "Details", type: "textarea", full: true },
-      { name: "resolution_status", label: "Resolution status", type: "text" }
-    ]
-  },
-  {
-    key: "policy-summary",
-    label: "Policy Summary",
-    phase: "Phase 1.6",
-    title: "Policy summary",
-    description: "Summarize the generated policy set before moving into detailed risk assessment.",
-    property: "policySummary",
-    metaFields: [
-      { name: "summary_owner", label: "Summary owner", type: "text" },
-      { name: "summary_notes", label: "Summary notes", type: "textarea", full: true }
-    ],
-    itemCollection: "summaries",
-    itemLabel: "Policy summary",
-    itemFields: [
-      { name: "summary_id", label: "Summary ID", type: "text" },
-      { name: "policy_id", label: "Policy ID", type: "text" },
-      { name: "key_controls", label: "Key controls", type: "textarea", full: true },
-      { name: "covered_domains", label: "Covered domains", type: "textarea", full: true },
-      { name: "gaps", label: "Gaps", type: "textarea", full: true }
-    ]
-  },
-  {
     key: "risk-assessment",
     label: "Risk Assessment",
     phase: "Phase 2",
@@ -347,29 +303,6 @@ const phaseConfigs = [
     ]
   },
   {
-    key: "risk-qa",
-    label: "Risk QA",
-    phase: "Phase 2.5",
-    title: "Risk QA",
-    description: "QA agent step: check risk scoring, completeness, treatment logic, and hallucination risk before the risk register is accepted.",
-    property: "riskQa",
-    metaFields: [
-      { name: "qa_owner", label: "QA owner", type: "text" },
-      { name: "risk_register_ref", label: "Risk register reference", type: "text" },
-      { name: "qa_notes", label: "QA notes", type: "textarea", full: true }
-    ],
-    itemCollection: "findings",
-    itemLabel: "Risk QA finding",
-    itemFields: [
-      { name: "finding_id", label: "Finding ID", type: "text" },
-      { name: "risk_id", label: "Risk ID", type: "text" },
-      { name: "severity", label: "Severity", type: "select", options: ["", "Low", "Medium", "High", "Critical"] },
-      { name: "category", label: "Category", type: "text" },
-      { name: "details", label: "Details", type: "textarea", full: true },
-      { name: "resolution_status", label: "Resolution status", type: "text" }
-    ]
-  },
-  {
     key: "vendor-risk",
     label: "Vendor Assessment",
     phase: "Phase 3",
@@ -410,29 +343,6 @@ const phaseConfigs = [
       { name: "linked_controls", label: "Linked controls", type: "text" },
       { name: "notes", label: "Risk narrative", type: "textarea", full: true, rows: 4 }
     ]
-  },
-  {
-    key: "vendor-qa",
-    label: "Vendor QA",
-    phase: "Phase 3.5",
-    title: "Vendor QA",
-    description: "QA agent step: check vendor criticality, evidence completeness, data exposure, and hallucination risk before vendor assessments are accepted.",
-    property: "vendorQa",
-    metaFields: [
-      { name: "qa_owner", label: "QA owner", type: "text" },
-      { name: "vendor_register_ref", label: "Vendor register reference", type: "text" },
-      { name: "qa_notes", label: "QA notes", type: "textarea", full: true }
-    ],
-    itemCollection: "findings",
-    itemLabel: "Vendor QA finding",
-    itemFields: [
-      { name: "finding_id", label: "Finding ID", type: "text" },
-      { name: "vendor_id", label: "Vendor ID", type: "text" },
-      { name: "severity", label: "Severity", type: "select", options: ["", "Low", "Medium", "High", "Critical"] },
-      { name: "category", label: "Category", type: "text" },
-      { name: "details", label: "Details", type: "textarea", full: true },
-      { name: "resolution_status", label: "Resolution status", type: "text" }
-    ]
   }
 ];
 
@@ -469,29 +379,6 @@ phaseConfigs.push(
       { name: "linked_risks", label: "Linked risks", type: "text" },
       { name: "linked_vendors", label: "Linked vendors", type: "text" },
       { name: "framework_mapping", label: "Framework mapping", type: "textarea", full: true }
-    ]
-  },
-  {
-    key: "audit-qa",
-    label: "Audit QA",
-    phase: "Phase 5",
-    title: "Audit QA",
-    description: "Validate the full linked chain before output.",
-    property: "auditQa",
-    metaFields: [
-      { name: "audit_owner", label: "Audit owner", type: "text" },
-      { name: "audit_notes", label: "Audit notes", type: "textarea", full: true }
-    ],
-    itemCollection: "findings",
-    itemLabel: "Audit finding",
-    itemFields: [
-      { name: "finding_id", label: "Finding ID", type: "text" },
-      { name: "affected_item_type", label: "Affected item type", type: "text" },
-      { name: "affected_item_id", label: "Affected item ID", type: "text" },
-      { name: "severity", label: "Severity", type: "select", options: ["", "Low", "Medium", "High", "Critical"] },
-      { name: "reason", label: "Reason", type: "textarea", full: true },
-      { name: "audit_impact", label: "Audit impact", type: "textarea", full: true },
-      { name: "remediation", label: "Remediation", type: "textarea", full: true }
     ]
   },
   {
@@ -564,7 +451,7 @@ const state = {
   controlDetailTab: "overview"
 };
 
-const hiddenUiPhaseKeys = new Set(["policy-qa", "policy-summary", "risk-qa", "vendor-qa", "audit-qa"]);
+const hiddenUiPhaseKeys = new Set([]);
 const utilitySectionKeys = new Set(["vendor-management"]);
 const clientUserRecordFields = [
   { name: "name", label: "Name", type: "text", placeholder: "Jane Doe" },
@@ -598,7 +485,9 @@ const tabNav = document.getElementById("tab-nav");
 const activeTabPanel = document.getElementById("active-tab-panel");
 
 function setStatus(message, tone = "default") {
-  saveStatus.textContent = message;
+  const ts = tone === "success" && message
+    ? ` · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
+  saveStatus.textContent = message + ts;
   saveStatus.dataset.tone = tone;
   if (!workspaceView.classList.contains("hidden")) {
     launcherFeedback.classList.add("hidden");
@@ -1057,8 +946,9 @@ function buildMatrixCells(records, likelihoodAccessor, impactAccessor) {
       return;
     }
     const key = `${impact}-${likelihood}`;
-    const current = cells.get(key) || 0;
-    cells.set(key, current + 1);
+    const arr = cells.get(key) || [];
+    arr.push(record);
+    cells.set(key, arr);
   });
   return cells;
 }
@@ -1066,10 +956,14 @@ function buildMatrixCells(records, likelihoodAccessor, impactAccessor) {
 function renderRiskSummaryPanel(records, inherentScores, residualScores, kind) {
   const isVendor = kind === "vendor";
   const total = records.length;
-  const avgI = inherentScores.length
-    ? (inherentScores.reduce((s, v) => s + v, 0) / inherentScores.length).toFixed(1) : "—";
-  const avgR = residualScores.length
-    ? (residualScores.reduce((s, v) => s + v, 0) / residualScores.length).toFixed(1) : "—";
+  const avgINum = inherentScores.length
+    ? inherentScores.reduce((s, v) => s + v, 0) / inherentScores.length : null;
+  const avgRNum = residualScores.length
+    ? residualScores.reduce((s, v) => s + v, 0) / residualScores.length : null;
+  const avgI = avgINum !== null ? avgINum.toFixed(1) : "—";
+  const avgR = avgRNum !== null ? avgRNum.toFixed(1) : "—";
+  const avgIBand = avgINum !== null ? getScoreBandLabel(Math.round(avgINum)) : "";
+  const avgRBand = avgRNum !== null ? getScoreBandLabel(Math.round(avgRNum)) : "";
   const critical = inherentScores.filter(s => s >= 16).length;
   const high     = inherentScores.filter(s => s >= 10 && s < 16).length;
   const medium   = inherentScores.filter(s => s >= 5  && s < 10).length;
@@ -1078,14 +972,19 @@ function renderRiskSummaryPanel(records, inherentScores, residualScores, kind) {
   const card = document.createElement("section");
   card.className = "info-card status-panel tone-default cmat-stats-panel";
 
+  const avgIHtml = avgIBand
+    ? `${avgI}<span class="cmat-stat-band cmat-stat-band-${avgIBand.toLowerCase()}">${avgIBand}</span>` : "—";
+  const avgRHtml = avgRBand
+    ? `${avgR}<span class="cmat-stat-band cmat-stat-band-${avgRBand.toLowerCase()}">${avgRBand}</span>` : "—";
+
   const stats = [
-    { label: isVendor ? "Vendors" : "Risks",   value: total,  cls: "" },
-    { label: "Avg Inherent",                    value: avgI,   cls: "" },
-    { label: "Avg Residual",                    value: avgR,   cls: "" },
-    { label: "Critical",  value: critical, cls: "cmat-stat-critical" },
-    { label: "High",      value: high,     cls: "cmat-stat-high" },
-    { label: "Medium",    value: medium,   cls: "cmat-stat-medium" },
-    { label: "Low",       value: low,      cls: "cmat-stat-low" }
+    { label: isVendor ? "Vendors" : "Risks", value: total,    cls: "",                   raw: true },
+    { label: "Avg Inherent",                  value: avgIHtml, cls: "",                   raw: true },
+    { label: "Avg Residual",                  value: avgRHtml, cls: "",                   raw: true },
+    { label: "Critical", value: critical, cls: "cmat-stat-critical", raw: false },
+    { label: "High",     value: high,     cls: "cmat-stat-high",     raw: false },
+    { label: "Medium",   value: medium,   cls: "cmat-stat-medium",   raw: false },
+    { label: "Low",      value: low,      cls: "cmat-stat-low",      raw: false }
   ];
 
   const row = document.createElement("div");
@@ -1093,10 +992,70 @@ function renderRiskSummaryPanel(records, inherentScores, residualScores, kind) {
   stats.forEach(s => {
     const item = document.createElement("div");
     item.className = "cmat-stat-item";
-    item.innerHTML = `<span class="cmat-stat-val ${s.cls}">${s.value}</span><span class="cmat-stat-label">${s.label}</span>`;
+    const valSpan = document.createElement("span");
+    valSpan.className = `cmat-stat-val ${s.cls}`;
+    if (s.raw) valSpan.innerHTML = s.value; else valSpan.textContent = s.value;
+    const lblSpan = document.createElement("span");
+    lblSpan.className = "cmat-stat-label";
+    lblSpan.textContent = s.label;
+    item.appendChild(valSpan);
+    item.appendChild(lblSpan);
     row.appendChild(item);
   });
   card.appendChild(row);
+
+  // Movement summary (inherent → residual per record)
+  const movements = records.map(r => {
+    const iS = parseScore(r.inherent_score);
+    const rS = parseScore(r.residual_score);
+    if (!Number.isInteger(iS) || !Number.isInteger(rS)) return null;
+    return rS < iS ? "improved" : rS > iS ? "worsened" : "unchanged";
+  }).filter(Boolean);
+  const improved  = movements.filter(m => m === "improved").length;
+  const unchanged = movements.filter(m => m === "unchanged").length;
+  const worsened  = movements.filter(m => m === "worsened").length;
+  if (movements.length > 0) {
+    const moveRow = document.createElement("div");
+    moveRow.className = "cmat-movement-row";
+    moveRow.title = "Change from inherent to residual score after controls";
+    const label = document.createElement("span");
+    label.className = "cmat-move-label";
+    label.textContent = "After controls:";
+    moveRow.appendChild(label);
+    [
+      { count: improved,  cls: "cmat-move-improved",  icon: "↓", text: "improved"  },
+      { count: unchanged, cls: "cmat-move-unchanged",  icon: "→", text: "unchanged" },
+      { count: worsened,  cls: "cmat-move-worsened",   icon: "↑", text: "worsened"  }
+    ].filter(s => s.count > 0).forEach(s => {
+      const item = document.createElement("span");
+      item.className = `cmat-move-item ${s.cls}`;
+      item.innerHTML = `${s.icon} <strong>${s.count}</strong> ${s.text}`;
+      moveRow.appendChild(item);
+    });
+    card.appendChild(moveRow);
+  }
+
+  // Stacked severity bar
+  const scored = critical + high + medium + low;
+  if (scored > 0) {
+    const barWrap = document.createElement("div");
+    barWrap.className = "cmat-severity-bar";
+    barWrap.title = `Critical: ${critical} · High: ${high} · Medium: ${medium} · Low: ${low}`;
+    [
+      { count: critical, cls: "sev-critical", label: `Critical: ${critical}` },
+      { count: high,     cls: "sev-high",     label: `High: ${high}` },
+      { count: medium,   cls: "sev-medium",   label: `Medium: ${medium}` },
+      { count: low,      cls: "sev-low",      label: `Low: ${low}` }
+    ].filter(s => s.count > 0).forEach(s => {
+      const seg = document.createElement("div");
+      seg.className = `cmat-sev-seg ${s.cls}`;
+      seg.style.width = `${(s.count / scored * 100).toFixed(1)}%`;
+      seg.title = s.label;
+      barWrap.appendChild(seg);
+    });
+    card.appendChild(barWrap);
+  }
+
   return card;
 }
 
@@ -1105,7 +1064,12 @@ function renderHeatmapCard(title, records, likelihoodAccessor, impactAccessor) {
   return renderDualRiskMatrix(title, records, likelihoodAccessor, impactAccessor, null, null);
 }
 
-function renderSingleCompactMatrix(records, likelihoodAccessor, impactAccessor) {
+function renderSingleCompactMatrix(records, likelihoodAccessor, impactAccessor, nameAccessor) {
+  const impactFullLabels    = ["Negligible", "Minor", "Moderate", "Major", "Catastrophic"];
+  const likelihoodFullLabels = ["Rare", "Unlikely", "Possible", "Likely", "Almost Certain"];
+  const impactShortLabels    = ["NEG", "MIN", "MOD", "MAJ", "CAT"]; // index 0=I1 … 4=I5
+  const likelihoodShortLabels = ["RARE", "UNLIK", "POSS", "LIKE", "A.C."]; // index 0=L1 … 4=L5
+
   const cells = buildMatrixCells(records, likelihoodAccessor, impactAccessor);
   const wrap = document.createElement("div");
   wrap.className = "cmat-wrap";
@@ -1120,12 +1084,13 @@ function renderSingleCompactMatrix(records, likelihoodAccessor, impactAccessor) 
   inner.className = "cmat-inner";
   wrap.appendChild(inner);
 
-  // Row numbers on Y axis (5 down to 1)
+  // Y-axis labels (Catastrophic → Negligible)
   const yNums = document.createElement("div");
   yNums.className = "cmat-y-nums";
   for (let i = 5; i >= 1; i--) {
     const n = document.createElement("span");
-    n.textContent = i;
+    n.textContent = impactShortLabels[i - 1]; // CAT at i=5, NEG at i=1
+    n.title = impactFullLabels[i - 1];
     yNums.appendChild(n);
   }
   inner.appendChild(yNums);
@@ -1141,10 +1106,16 @@ function renderSingleCompactMatrix(records, likelihoodAccessor, impactAccessor) 
     for (let likelihood = 1; likelihood <= 5; likelihood++) {
       const score = impact * likelihood;
       const band = getScoreBand(score);
-      const count = cells.get(`${impact}-${likelihood}`) || 0;
+      const recs = cells.get(`${impact}-${likelihood}`) || [];
+      const count = recs.length;
       const cell = document.createElement("div");
       cell.className = `cmat-cell cmat-${band.label.toLowerCase()}`;
-      cell.title = `L${likelihood} × I${impact} = ${score} (${band.label})`;
+      const iLabel = impactFullLabels[impact - 1];
+      const lLabel = likelihoodFullLabels[likelihood - 1];
+      const names = nameAccessor && recs.length > 0
+        ? "\n" + recs.map(r => "• " + (nameAccessor(r) || "Unknown")).join("\n")
+        : "";
+      cell.title = `${lLabel} × ${iLabel} = ${score} (${band.label})${names}`;
       if (count > 0) {
         const badge = document.createElement("span");
         badge.className = "cmat-badge";
@@ -1156,12 +1127,13 @@ function renderSingleCompactMatrix(records, likelihoodAccessor, impactAccessor) 
   }
   gridCol.appendChild(grid);
 
-  // X-axis numbers
+  // X-axis labels (Rare → Almost Certain)
   const xNums = document.createElement("div");
   xNums.className = "cmat-x-nums";
   for (let i = 1; i <= 5; i++) {
     const n = document.createElement("span");
-    n.textContent = i;
+    n.textContent = likelihoodShortLabels[i - 1];
+    n.title = likelihoodFullLabels[i - 1];
     xNums.appendChild(n);
   }
   gridCol.appendChild(xNums);
@@ -1175,7 +1147,7 @@ function renderSingleCompactMatrix(records, likelihoodAccessor, impactAccessor) 
   return wrap;
 }
 
-function renderDualRiskMatrix(title, records, iLAccessor, iIAccessor, rLAccessor, rIAccessor) {
+function renderDualRiskMatrix(title, records, iLAccessor, iIAccessor, rLAccessor, rIAccessor, nameAccessor) {
   const card = document.createElement("section");
   card.className = "info-card status-panel tone-default cmat-panel";
 
@@ -1189,10 +1161,10 @@ function renderDualRiskMatrix(title, records, iLAccessor, iIAccessor, rLAccessor
   const legend = document.createElement("div");
   legend.className = "cmat-legend";
   [
-    { key: "critical", label: "Critical" },
-    { key: "high",     label: "High" },
-    { key: "medium",   label: "Medium" },
-    { key: "low",      label: "Low" }
+    { key: "critical", label: "Critical ≥16" },
+    { key: "high",     label: "High 10–15" },
+    { key: "medium",   label: "Medium 5–9" },
+    { key: "low",      label: "Low 1–4" }
   ].forEach(b => {
     const chip = document.createElement("span");
     chip.className = `cmat-legend-chip cmat-legend-${b.key}`;
@@ -1213,14 +1185,14 @@ function renderDualRiskMatrix(title, records, iLAccessor, iIAccessor, rLAccessor
   iTitle.className = "cmat-half-title";
   iTitle.textContent = rLAccessor ? "Inherent Risk" : title;
   iWrap.appendChild(iTitle);
-  iWrap.appendChild(renderSingleCompactMatrix(records, iLAccessor, iIAccessor));
+  iWrap.appendChild(renderSingleCompactMatrix(records, iLAccessor, iIAccessor, nameAccessor));
   body.appendChild(iWrap);
 
   if (rLAccessor) {
-    // Arrow
+    // Arrow — styled with accent color to draw the eye
     const arrow = document.createElement("div");
     arrow.className = "cmat-arrow";
-    arrow.innerHTML = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10h12M12 6l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>after<br>controls</span>`;
+    arrow.innerHTML = `<svg width="22" height="22" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>After<br>Controls</span>`;
     body.appendChild(arrow);
 
     // Residual matrix
@@ -1230,7 +1202,7 @@ function renderDualRiskMatrix(title, records, iLAccessor, iIAccessor, rLAccessor
     rTitle.className = "cmat-half-title cmat-residual-title";
     rTitle.textContent = "Residual Risk";
     rWrap.appendChild(rTitle);
-    rWrap.appendChild(renderSingleCompactMatrix(records, rLAccessor, rIAccessor));
+    rWrap.appendChild(renderSingleCompactMatrix(records, rLAccessor, rIAccessor, nameAccessor));
     body.appendChild(rWrap);
   }
 
@@ -1740,13 +1712,20 @@ function renderBrowserDownloadCard(title, buttons) {
 // ── End browser-side export helpers ──────────────────────────────────────────
 
 function renderArtifactLinks(paths) {
+  const LINK_TYPE_COLORS = {
+    PDF:  "color:#f04060", XLSX: "color:#00c5a7", CSV: "color:#00c5a7",
+    DOCX: "color:#4fa3e0", JSON: "color:#f0a030", ZIP: "color:#8b5cf6"
+  };
   const wrapper = document.createElement("div");
   wrapper.className = "artifact-links";
   paths.forEach((path) => {
+    const fileName = path.split(/[/\\]/).pop() || path;
+    const ext = (fileName.split(".").pop() || "").toUpperCase();
+    const tc = LINK_TYPE_COLORS[ext] || "color:#8ba5c5";
     const link = document.createElement("a");
     link.className = "artifact-link";
     link.href = "#";
-    link.textContent = path.split(/[/\\]/).pop() || path;
+    link.innerHTML = `${fileName} <span class="dl-type-badge" style="background:rgba(255,255,255,0.06);${tc};border:1px solid rgba(255,255,255,0.1)">${ext}</span>`;
     link.addEventListener("click", (event) => {
       event.preventDefault();
       downloadArtifact(path).catch((error) => setStatus(`Download failed: ${error.message}`, "error"));
@@ -1785,13 +1764,24 @@ function renderDownloadButtons(title, buttons) {
   const row = document.createElement("div");
   row.className = "download-button-row";
 
+  const DL_TYPE_COLORS = {
+    PDF:  { bg: "rgba(240,64,96,0.12)",   color: "#f04060", border: "rgba(240,64,96,0.30)" },
+    XLSX: { bg: "rgba(0,197,167,0.12)",    color: "#00c5a7", border: "rgba(0,197,167,0.30)" },
+    CSV:  { bg: "rgba(0,197,167,0.12)",    color: "#00c5a7", border: "rgba(0,197,167,0.30)" },
+    DOCX: { bg: "rgba(79,163,224,0.12)",   color: "#4fa3e0", border: "rgba(79,163,224,0.30)" },
+    JSON: { bg: "rgba(240,160,48,0.12)",   color: "#f0a030", border: "rgba(240,160,48,0.30)" },
+    ZIP:  { bg: "rgba(139,92,246,0.12)",   color: "#8b5cf6", border: "rgba(139,92,246,0.30)" },
+  };
+
   buttons
     .filter((button) => button.path)
     .forEach((button) => {
+      const ext = (button.path.split(".").pop() || "").toUpperCase();
+      const tc = DL_TYPE_COLORS[ext] || { bg: "rgba(107,132,160,0.12)", color: "#8ba5c5", border: "rgba(107,132,160,0.25)" };
       const trigger = document.createElement("button");
       trigger.type = "button";
       trigger.className = `action-button${button.ghost ? " ghost" : ""}`;
-      trigger.textContent = button.label;
+      trigger.innerHTML = `${button.label} <span class="dl-type-badge" style="background:${tc.bg};color:${tc.color};border:1px solid ${tc.border}">${ext}</span>`;
       trigger.addEventListener("click", () => {
         downloadArtifact(button.path).catch((error) => setStatus(`Download failed: ${error.message}`, "error"));
       });
@@ -2706,10 +2696,17 @@ function getPolicyGenerationProgress(clientData) {
     stages.find((stage) => String(stage.status || "").toLowerCase() === "in-progress") ||
     stages.find((stage) => String(stage.key || "") === String(section.generation_stage || ""));
 
+  const inProgress = normalizedStatus === "in progress";
+  const completed  = normalizedStatus === "completed";
+  const failed     = normalizedStatus === "failed";
+  // "queued" = server has acknowledged the request but hasn't started writing yet
+  const queued = normalizedStatus !== "" && !inProgress && !completed && !failed;
   return {
-    inProgress: normalizedStatus === "in progress",
-    completed: normalizedStatus === "completed",
-    failed: normalizedStatus === "failed",
+    inProgress,
+    queued,
+    active: inProgress || queued, // anything that means "don't save over this"
+    completed,
+    failed,
     stageKey: section.generation_stage || activeStage?.key || "",
     stageLabel: activeStage?.label || "",
     stageNote: section.generation_stage_note || activeStage?.note || "",
@@ -2725,37 +2722,16 @@ function getWorkflowState(clientData) {
   const policyApproval = getPolicyApprovalStatus(clientData);
   const policyProgress = getPolicyGenerationProgress(clientData);
   const policyCount = policyApproval.policyCount;
-  const vendorDirectoryConfig = getPhaseConfig("vendor-management");
-  const policyQaConfig = getPhaseConfig("policy-qa");
-  const policySummaryConfig = getPhaseConfig("policy-summary");
   const riskAssessmentConfig = getPhaseConfig("risk-assessment");
-  const riskQaConfig = getPhaseConfig("risk-qa");
   const vendorRiskConfig = getPhaseConfig("vendor-risk");
-  const vendorQaConfig = getPhaseConfig("vendor-qa");
   const controlMappingConfig = getPhaseConfig("control-mapping");
-  const auditQaConfig = getPhaseConfig("audit-qa");
-  const outputConfig = getPhaseConfig("output");
-  const vendorDirectoryRecords = nonBlankItems(clientData.onboarding?.vendors || [], vendorDirectoryConfig.itemFields);
-  const vendorDirectoryCount = vendorDirectoryRecords.length;
-  const qaCount = nonBlankItems(clientData.policyQa?.findings || [], policyQaConfig.itemFields).length;
-  const summaryCount = nonBlankItems(clientData.policySummary?.summaries || [], policySummaryConfig.itemFields).length;
   const riskCount = nonBlankItems(clientData.riskAssessment?.risks || [], riskAssessmentConfig.itemFields).length;
-  const riskQaCount = nonBlankItems(clientData.riskQa?.findings || [], riskQaConfig.itemFields).length;
   const vendorRecords = nonBlankItems(clientData.vendorRisk?.vendors || [], vendorRiskConfig.itemFields);
   const vendorCount = countCompletedVendorAssessments(vendorRecords);
-  const vendorQaCount = nonBlankItems(clientData.vendorQa?.findings || [], vendorQaConfig.itemFields).length;
   const controlCount = nonBlankItems(clientData.controlMapping?.controls || [], controlMappingConfig.itemFields).length;
-  const auditCount = nonBlankItems(clientData.auditQa?.findings || [], auditQaConfig.itemFields).length;
-  const outputCount = nonBlankItems(clientData.output?.outputs || [], outputConfig.itemFields).length;
   const vendorTargetCount = onboardingSnapshot.vendorCount;
   const vendorPhaseComplete = vendorTargetCount > 0 ? vendorCount >= vendorTargetCount : true;
-  const policyQaRan = isFilled(clientData.policyQa?.qa_owner) || isFilled(clientData.policyQa?.cleaned_policies_ref) || qaCount > 0;
-  const riskQaRan = isFilled(clientData.riskQa?.qa_owner) || isFilled(clientData.riskQa?.risk_register_ref) || riskQaCount > 0;
-  const vendorQaRan = isFilled(clientData.vendorQa?.qa_owner) || isFilled(clientData.vendorQa?.vendor_register_ref) || vendorQaCount > 0;
-  const auditQaRan = isFilled(clientData.auditQa?.audit_owner) || auditCount > 0;
   const policiesReadyForDownstream = policyApproval.allApproved;
-  const riskQaComplete = policiesReadyForDownstream && riskCount > 0 && riskQaRan;
-  const vendorQaComplete = vendorTargetCount === 0 ? true : vendorPhaseComplete && vendorQaRan;
 
   const states = [
     {
@@ -2793,22 +2769,6 @@ function getWorkflowState(clientData) {
       blockers: onboardingSnapshot.ready ? [] : ["Finish onboarding first."]
     },
     {
-      key: "policy-qa",
-      unlocked: policyCount > 0,
-      complete: policyQaRan,
-      status: policyCount === 0 ? "blocked" : policyQaRan ? "complete" : "ready",
-      detail: `${qaCount} policy QA findings`,
-      blockers: policyCount > 0 ? [] : ["Generate policies first."]
-    },
-    {
-      key: "policy-summary",
-      unlocked: policyQaRan,
-      complete: summaryCount > 0,
-      status: !policyQaRan ? "blocked" : summaryCount > 0 ? "complete" : "ready",
-      detail: `${summaryCount} policy summaries`,
-      blockers: policyQaRan ? [] : ["Complete policy QA first."]
-    },
-    {
       key: "risk-assessment",
       unlocked: policiesReadyForDownstream,
       complete: riskCount >= 5,
@@ -2828,27 +2788,6 @@ function getWorkflowState(clientData) {
         policiesReadyForDownstream
           ? []
           : ["Publish and sign off every policy first."]
-    },
-    {
-      key: "risk-qa",
-      unlocked: policiesReadyForDownstream && riskCount >= 5,
-      complete: riskQaComplete,
-      status:
-        !policiesReadyForDownstream || riskCount < 5
-          ? "blocked"
-          : riskQaComplete
-            ? "complete"
-            : "ready",
-      detail:
-        !policiesReadyForDownstream
-          ? "Waiting for all policies to be published and signed off"
-          : `${riskQaCount} risk QA findings`,
-      blockers:
-        !policiesReadyForDownstream
-          ? ["Publish and sign off every policy first."]
-          : riskCount >= 5
-            ? []
-            : ["Complete risk assessment first."]
     },
     {
       key: "vendor-risk",
@@ -2874,19 +2813,6 @@ function getWorkflowState(clientData) {
             : ["Complete risk assessment first."]
     },
     {
-      key: "vendor-qa",
-      unlocked: riskQaComplete && vendorPhaseComplete,
-      complete: vendorQaComplete,
-      status: !(riskQaComplete && vendorPhaseComplete) ? "blocked" : vendorQaComplete ? "complete" : "ready",
-      detail: vendorTargetCount > 0 ? `${vendorQaCount} vendor QA findings` : "No vendor QA required",
-      blockers:
-        !riskQaComplete
-          ? ["Complete risk QA first."]
-          : vendorPhaseComplete
-            ? []
-            : ["Complete vendor assessments first."]
-    },
-    {
       key: "control-mapping",
       unlocked: policiesReadyForDownstream && riskCount >= 5 && vendorPhaseComplete,
       complete: controlCount > 0,
@@ -2902,19 +2828,11 @@ function getWorkflowState(clientData) {
               : ["Complete vendor assessments first."]
     },
     {
-      key: "audit-qa",
-      unlocked: controlCount > 0,
-      complete: auditQaRan,
-      status: controlCount === 0 ? "blocked" : auditQaRan ? "complete" : "ready",
-      detail: `${auditCount} audit QA findings`,
-      blockers: controlCount > 0 ? [] : ["Complete control mapping first."]
-    },
-    {
       key: "output",
       unlocked: onboardingSnapshot.ready,
-      complete: outputCount > 0,
-      status: !onboardingSnapshot.ready ? "blocked" : outputCount > 0 ? "complete" : "ready",
-      detail: `${outputCount} output records`,
+      complete: policyCount > 0,
+      status: !onboardingSnapshot.ready ? "blocked" : policyCount > 0 ? "complete" : "ready",
+      detail: policyCount > 0 ? "Outputs ready for download" : "Generate policies to unlock downloads",
       blockers: onboardingSnapshot.ready ? [] : ["Complete onboarding first."]
     },
     {
@@ -3028,6 +2946,24 @@ function renderClientList() {
 function renderWorkflowStatus() {
   workflowStatusGrid.innerHTML = "";
   const workflow = getVisibleWorkflow(getWorkflowState(state.selectedClientData));
+  const pct = workflow.states.length > 0
+    ? Math.round((workflow.completeCount / workflow.states.length) * 100) : 0;
+
+  // Overall progress bar — insert before the grid inside the tracker card
+  const trackerCard = workflowStatusGrid.parentElement;
+  const oldBar = trackerCard.querySelector(".workflow-progress-wrap");
+  if (oldBar) oldBar.remove();
+  const progressWrap = document.createElement("div");
+  progressWrap.className = "workflow-progress-wrap";
+  progressWrap.innerHTML = `
+    <div class="workflow-progress-header">
+      <span class="workflow-progress-label">${workflow.completeCount} of ${workflow.states.length} phases complete</span>
+      <span class="workflow-progress-pct">${pct}%</span>
+    </div>
+    <div class="workflow-progress-track">
+      <div class="workflow-progress-fill" style="width: ${pct}%"></div>
+    </div>`;
+  trackerCard.insertBefore(progressWrap, workflowStatusGrid);
 
   workflow.states.forEach((entry) => {
     const config = phaseConfigs.find((phase) => phase.key === entry.key);
@@ -3138,23 +3074,36 @@ function renderWorkspaceHeader(client) {
   }
 }
 
+const PHASE_ICONS = {
+  "onboarding":        `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 14c0-2.485 2.015-4.5 4.5-4.5s4.5 2.015 4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  "policy-generation": `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 6h4M6 9h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  "risk-assessment":   `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2L14.5 13.5H1.5L8 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 7v2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.5" r="0.6" fill="currentColor"/></svg>`,
+  "vendor-risk":       `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="2" y="7" width="12" height="7.5" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  "control-mapping":   `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>`,
+  "output":            `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v7.5M5.5 7L8 9.5 10.5 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  "evidence-tracker":  `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="3" y="1.5" width="10" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 5.5l1.5 1.5 3-3M6 9.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  "intelligence":      `<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 13v1.5M6 14.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+};
+
 function renderTabs() {
   const workflowStates = getVisibleWorkflow(getWorkflowState(state.selectedClientData)).states;
   tabNav.innerHTML = "";
 
   phaseConfigs.filter((config) => isUiVisiblePhase(config.key)).forEach((config) => {
     const phaseState = workflowStates.find((entry) => entry.key === config.key);
+    const iconHtml = PHASE_ICONS[config.key]
+      ? `<span class="tab-btn-icon">${PHASE_ICONS[config.key]}</span>` : "";
     const button = document.createElement("button");
     button.type = "button";
     button.className = `tab-button tab-${phaseState.status}${config.key === state.activePhaseKey ? " active" : ""}`;
-    button.textContent = `${config.phase} | ${config.label}`;
     const onboardingGated = !phaseState.unlocked && phaseState.blockers.some(b => /onboarding/i.test(b));
     if (onboardingGated) {
       button.disabled = false;
-      button.textContent = `${config.phase} | ${config.label} 🔒`;
+      button.innerHTML = `${iconHtml}${config.phase} | ${config.label} 🔒`;
       button.title = "Complete onboarding first to unlock this module.";
     } else {
       button.disabled = !phaseState.unlocked;
+      button.innerHTML = `${iconHtml}${config.phase} | ${config.label}`;
       if (phaseState.blockers.length) {
         button.title = phaseState.blockers.join(" | ");
       }
@@ -3739,6 +3688,23 @@ function renderPolicyListView(policies) {
   toolbar.appendChild(filterRow);
   shell.appendChild(toolbar);
 
+  // Policy approval progress bar
+  if (policies.length > 0) {
+    const approvedCount = policies.filter(p => pmGetStatus(p) === "approved").length;
+    const approvalPct = Math.round((approvedCount / policies.length) * 100);
+    const approvalWrap = document.createElement("div");
+    approvalWrap.className = "pm-approval-wrap";
+    approvalWrap.innerHTML = `
+      <div class="pm-approval-header">
+        <span>Policy approvals</span>
+        <span class="pm-approval-pct">${approvedCount} / ${policies.length} approved (${approvalPct}%)</span>
+      </div>
+      <div class="pm-approval-track">
+        <div class="pm-approval-fill${approvedCount === policies.length ? " all-done" : ""}" style="width: ${approvalPct}%"></div>
+      </div>`;
+    shell.appendChild(approvalWrap);
+  }
+
   const listEl = document.createElement("div");
   listEl.className = "pm-policy-list";
   shell.appendChild(listEl);
@@ -3774,6 +3740,7 @@ function renderPolicyListView(policies) {
           </div>
         </div>
         <div class="pm-row-right">
+          <span class="pm-ai-badge">AI</span>
           <span class="pm-status-badge pm-status-${status}">${pmStatusLabel(status)}</span>
           <span class="pm-row-arrow">›</span>
         </div>`;
@@ -3954,9 +3921,28 @@ function renderPolicyDetail(policies, index) {
       ]));
     } else if (tab === "body") {
       contentArea.appendChild(group(null, [
-        { name: "table_of_contents", label: "Table of contents", type: "textarea", full: true, rows: 4 },
-        { name: "body", label: "Policy body", type: "textarea", full: true, rows: 26 }
+        { name: "table_of_contents", label: "Table of contents", type: "textarea", full: true, rows: 4 }
       ]));
+      // Policy body with expand/collapse
+      const bodyGroup = group(null, [
+        { name: "body", label: "Policy body", type: "textarea", full: true, rows: 6 }
+      ]);
+      const bodyTextarea = bodyGroup.querySelector("textarea");
+      const wordCount = ((local.body || "").split(/\s+/).filter(Boolean).length);
+      let bodyExpanded = false;
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "pm-body-toggle-btn";
+      toggleBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Show full policy · ~${wordCount.toLocaleString()} words`;
+      toggleBtn.addEventListener("click", () => {
+        bodyExpanded = !bodyExpanded;
+        bodyTextarea.rows = bodyExpanded ? 30 : 6;
+        toggleBtn.innerHTML = bodyExpanded
+          ? `<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 10l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Collapse policy text`
+          : `<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Show full policy · ~${wordCount.toLocaleString()} words`;
+      });
+      bodyGroup.appendChild(toggleBtn);
+      contentArea.appendChild(bodyGroup);
     } else if (tab === "controls") {
       contentArea.appendChild(group("Framework & controls", [
         { name: "framework_mapping", label: "Framework mapping", type: "textarea", full: true, rows: 3 },
@@ -4172,7 +4158,12 @@ function renderPhaseStatusSummary(config, phaseState) {
   if (config.key === "policy-generation") {
     const onboarding = state.selectedClientData.onboarding || {};
     const policyProgress = getPolicyGenerationProgress(state.selectedClientData);
-    const topRisks = getOnboardingSnapshot(onboarding).derivedTopRisks;
+    // Use AI-discovered risks from risk assessment if available, otherwise fall back to derived
+    const aiDiscoveredRisks = (state.selectedClientData.riskAssessment?.risks || []).filter(r => r && r.threat);
+    const topRisks = aiDiscoveredRisks.length > 0
+      ? aiDiscoveredRisks.map(r => ({ title: r.threat }))
+      : getOnboardingSnapshot(onboarding).derivedTopRisks;
+    const risksAreAiDiscovered = aiDiscoveredRisks.length > 0;
     wrapper.appendChild(renderPolicyGenerationStages(policyProgress));
     const improvementLog = state.selectedClientData?.policyGeneration?.improvement_log;
     if (improvementLog && policyProgress.completed) {
@@ -4193,7 +4184,7 @@ function renderPhaseStatusSummary(config, phaseState) {
       `Framework: ${onboarding.framework_selection || "Not selected"}`,
       "Policy templates: stored",
       "Framework materials: stored",
-      ...topRisks.map((risk) => `Top risk: ${risk.title}`)
+      ...topRisks.map((risk) => `${risksAreAiDiscovered ? "AI-discovered risk" : "Top risk"}: ${risk.title}`)
     ].forEach((entry) => {
       const item = document.createElement("div");
       item.className = "status-item";
@@ -4213,7 +4204,8 @@ function renderPhaseStatusSummary(config, phaseState) {
       "Risk Matrix",
       risks,
       r => r.likelihood, r => r.impact,
-      r => r.residual_likelihood, r => r.residual_impact
+      r => r.residual_likelihood, r => r.residual_impact,
+      r => r.threat || r.risk_title || "Unknown risk"
     ));
   }
 
@@ -4251,7 +4243,8 @@ function renderPhaseStatusSummary(config, phaseState) {
       "Vendor Risk Matrix",
       vendors,
       v => v.vendor_likelihood, v => v.vendor_impact,
-      v => v.residual_likelihood, v => v.residual_impact
+      v => v.residual_likelihood, v => v.residual_impact,
+      v => v.vendor_name || "Unknown vendor"
     ));
   }
 
@@ -4696,7 +4689,7 @@ function renderActivePhase() {
     appendGroupSections(leadingGroups, "primary");
   }
 
-  if (config.metaFields) {
+  if (config.metaFields && config.key !== "output") {
     const metaSection = document.createElement("section");
     metaSection.className = "form-section";
     const title = document.createElement("h4");
@@ -4706,7 +4699,7 @@ function renderActivePhase() {
     form.appendChild(metaSection);
   }
 
-  if (config.itemCollection) {
+  if (config.itemCollection && config.key !== "output") {
     const itemSection = document.createElement("section");
     itemSection.className = "form-section";
     const itemHead = document.createElement("div");
@@ -4785,25 +4778,7 @@ function renderActivePhase() {
       list.dataset.collection = config.itemCollection;
       itemSection.appendChild(list);
     }
-    if (config.itemLabel === "Vendor" && (config.key === "onboarding" || config.key === "vendor-management")) {
-      const footerActions = document.createElement("div");
-      footerActions.className = "repeatable-footer-actions";
-      const addAnotherButton = document.createElement("button");
-      addAnotherButton.type = "button";
-      addAnotherButton.className = "action-button ghost";
-      addAnotherButton.textContent = "Add another vendor";
-      addAnotherButton.addEventListener("click", () => {
-        syncDraftStateFromForm(config, form);
-        const nextItem = {};
-        config.itemFields.forEach((field) => {
-          nextItem[field.name] = "";
-        });
-        state.selectedClientData[config.property][config.itemCollection].push(nextItem);
-        renderActivePhase();
-      });
-      footerActions.appendChild(addAnotherButton);
-      itemSection.appendChild(footerActions);
-    }
+    // "Add another vendor" footer button removed — duplicate of "Add vendor" in section header
     form.appendChild(itemSection);
   }
 
@@ -4842,11 +4817,18 @@ function renderActivePhase() {
         ? "Finish Onboarding"
       : config.key === "vendor-management"
         ? "Save Vendor Management"
+      : config.key === "policy-generation"
+        ? "Save Approvals"
         : `Save ${config.label}`;
-  if (policyProgress?.inProgress) {
+  if (policyProgress?.active) {
     submitButton.disabled = true;
+    submitButton.title = policyProgress.inProgress
+      ? "Policy generation is running — please wait until it completes."
+      : "Policy generation is queued — saving is locked until generation finishes.";
   }
-  actions.appendChild(submitButton);
+  if (config.key !== "output") {
+    actions.appendChild(submitButton);
+  }
   if (config.key === "risk-assessment") {
     const riskItems = nonBlankItems(
       (state.selectedClientData.riskAssessment?.risks || []).map(decorateRiskRecord),
@@ -5062,18 +5044,18 @@ function renderActivePhase() {
   }
   if (config.key === "policy-generation") {
     const policyApproval = getPolicyApprovalStatus(state.selectedClientData);
-    if (policyProgress?.inProgress) {
+    if (policyProgress?.active) {
       const runningButton = document.createElement("button");
       runningButton.type = "button";
       runningButton.className = "action-button ghost";
-      runningButton.textContent = "Policy generation in progress";
+      runningButton.textContent = policyProgress.queued ? "Generation queued — starting soon…" : "Policy generation in progress";
       runningButton.disabled = true;
       actions.appendChild(runningButton);
 
       // Show Reset button if stuck for more than 3 minutes
       const startedAt = policyProgress?.startedAt ? new Date(policyProgress.startedAt) : null;
       const stuckMins = startedAt ? (Date.now() - startedAt.getTime()) / 60000 : 0;
-      if (stuckMins > 3) {
+      if (stuckMins > 10) {
         const resetButton = document.createElement("button");
         resetButton.type = "button";
         resetButton.className = "danger-button";
@@ -5098,7 +5080,7 @@ function renderActivePhase() {
         });
         actions.appendChild(resetButton);
       }
-    } else if (policyApproval.policyCount === 0) {
+    } else if (policyApproval.policyCount === 0 && !policyProgress?.queued) {
       const generateButton = document.createElement("button");
       generateButton.type = "button";
       generateButton.className = "action-button";
@@ -5118,20 +5100,20 @@ function renderActivePhase() {
       });
       actions.appendChild(bulkApproveButton);
 
-      if (!policyProgress?.inProgress) {
+      if (!policyProgress?.active) {
         // Unsign All — removes sign-off but keeps published
         if (policyApproval.signedOffCount > 0) {
           const unsignBtn = document.createElement("button");
           unsignBtn.type = "button";
           unsignBtn.className = "action-button ghost";
-          unsignBtn.textContent = "Unsign All";
+          unsignBtn.textContent = "Unsign All (keep published)";
           unsignBtn.title = "Remove sign-off from all policies. Published status is preserved.";
           unsignBtn.addEventListener("click", () => {
             unsignBtn.disabled = true;
             unsignBtn.textContent = "Unsigning...";
             bulkPolicyAction("unsign-all", `All ${policyApproval.policyCount} policies unsigned.`)
               .catch(e => setStatus(e.message, "error"))
-              .finally(() => { unsignBtn.disabled = false; unsignBtn.textContent = "Unsign All"; });
+              .finally(() => { unsignBtn.disabled = false; unsignBtn.textContent = "Unsign All (keep published)"; });
           });
           actions.appendChild(unsignBtn);
         }
@@ -5169,17 +5151,7 @@ function renderActivePhase() {
         actions.appendChild(regenButton);
       }
     }
-    const continueButton = document.createElement("button");
-    continueButton.type = "button";
-    continueButton.className = "action-button ghost";
-    continueButton.textContent = "Save policies and continue processing";
-    if (policyProgress?.inProgress) {
-      continueButton.disabled = true;
-    }
-    continueButton.addEventListener("click", () => {
-      continueProcessingFromPolicies(form).catch((error) => setStatus(error.message, "error"));
-    });
-    actions.appendChild(continueButton);
+    // "Save policies and continue processing" removed — savePhase auto-triggers /process when all policies are approved
   }
   form.appendChild(actions);
 
@@ -5749,7 +5721,11 @@ async function deleteClientWorkspace() {
   if (!state.selectedClientId) {
     return;
   }
-  if (!window.confirm(`Delete client workspace for ${state.selectedClientData.client.companyName}?`)) {
+  const companyName = state.selectedClientData.client.companyName;
+  const typed = window.prompt(`This will permanently delete all data for "${companyName}".\n\nType the client name exactly to confirm:`);
+  if (typed === null) return;
+  if (typed !== companyName) {
+    setStatus(`Deletion cancelled — name did not match. Expected: "${companyName}"`, "error");
     return;
   }
 

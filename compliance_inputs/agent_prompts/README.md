@@ -4,32 +4,22 @@ Stored input prompts for DB Agent supporting workflows.
 
 ## QA agents
 
-- `qa/risk_qa_agent.txt`
-  - source: `C:\Users\Dimple Badhan\Downloads\risk_qa_agent.txt`
-- `qa/vendor_qa_agent.txt`
-  - source: `C:\Users\Dimple Badhan\Downloads\vendor_qa_agent.txt`
-- `qa/policy_qa_agent.txt`
-  - source: `C:\Users\Dimple Badhan\Downloads\policy_qa_agent.txt`
+- `qa/risk_qa_agent.txt` — risk assessment QA agent prompt
+- `qa/vendor_qa_agent.txt` — vendor assessment QA agent prompt
+- `qa/policy_qa_agent.txt` — policy QA agent prompt
 
 ## Assessment agents
 
-- `assessments/risk_management_assistant.txt`
-  - source: `D:\Comp AI\ai prompts\default prompts\You are a risk-management assistant.txt`
-- `assessments/vendor_risk_assessment_agent.txt`
-  - source: `D:\Comp AI\ai prompts\default prompts\vendor risk asssessment agent.txt`
+- `assessments/risk_management_assistant.txt` — risk management assistant prompt
+- `assessments/vendor_risk_assessment_agent.txt` — vendor risk assessment agent prompt
 
 ## Generation agents
 
-- `generation/policy_generation_agent.txt`
-  - source: `D:\Comp AI\ai prompts\default prompts\combined iso and soc 2plicy generation rules.txt`
-- `generation/context_analyzer_agent.txt`
-  - source: user-provided Codex master prompt, staged into Stage 1 context analysis on 2026-03-22
-- `generation/control_strategy_engine.txt`
-  - source: user-provided Codex master prompt, staged into Stage 2 control selection on 2026-03-22
-- `generation/output_generator_agent.txt`
-  - source: user-provided Codex master prompt, staged into Stage 3 artifact generation on 2026-03-22
-- `generation/codex_master_prompt.md`
-  - source: user-provided universal Codex prompt on 2026-03-22
+- `generation/policy_generation_agent.txt` — policy generation rules for ISO 27001 and SOC 2
+- `generation/context_analyzer_agent.txt` — Stage 1 context analysis prompt
+- `generation/control_strategy_engine.txt` — Stage 2 control selection prompt
+- `generation/output_generator_agent.txt` — Stage 3 artifact generation prompt
+- `generation/codex_master_prompt.md` — universal generation prompt
 
 ## Intake status
 

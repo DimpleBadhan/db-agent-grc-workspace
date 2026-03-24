@@ -1,7 +1,5 @@
 # Policy Template Intake
 
-- Source provided by user: `D:\Comp AI\Anthony new batch policies all framworks combined`
-- Stored copy: `C:\Users\Dimple Badhan\Documents\New project 9\compliance_inputs\policy_templates\anthony_new_batch_policies_all_frameworks_combined`
 - Intake date: `2026-03-18`
 - Status: `received`
 - Template count: `25`

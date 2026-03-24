@@ -37,7 +37,7 @@ Local API endpoints:
 Double-click `run-local.bat`, or run:
 
 ```powershell
-cd "C:\Users\Dimple Badhan\Documents\New project 9\db-agent-local-app"
+cd db-agent-local-app
 .\run-local.ps1
 ```
 
