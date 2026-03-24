@@ -619,15 +619,15 @@ function buildControlMappingSection(policies, risks, vendors, frameworkLabels) {
     const ctrl = {
       control_id: `CTRL-POL-${String(ctrlPol++).padStart(3,'0')}`,
       control_category: policy.category || 'Policy Control',
-      framework_identifier: fw,
+      framework_mapping: fw,
       control_title: `${policy.name} Control`,
       description: `${policy.name} policy requirements are implemented and evidenced per ${fw}.`,
       linked_policies: policy.policy_id,
       linked_risks: policy.linked_risks || '',
       linked_vendors: '',
-      ownership: policy.policy_owner || '',
-      review_frequency: policy.review_cycle || 'Annual',
-      evidence_requirements: `Policy document, review records, exception log, training completion evidence.`,
+      owner: policy.policy_owner || '',
+      frequency: policy.review_cycle || 'Annual',
+      evidence: `Policy document, review records, exception log, training completion evidence.`,
     };
     controls.push(ctrl);
   }
@@ -636,15 +636,15 @@ function buildControlMappingSection(policies, risks, vendors, frameworkLabels) {
     const ctrl = {
       control_id: `CTRL-VDR-${String(ctrlVdr++).padStart(3,'0')}`,
       control_category: 'Vendor Risk Control',
-      framework_identifier: fw,
+      framework_mapping: fw,
       control_title: `${vendor.vendor_name} Vendor Oversight`,
       description: `Third-party oversight controls for ${vendor.vendor_name} — covers assurance, contract, and access reviews.`,
       linked_policies: '',
       linked_risks: vendor.linked_risks || '',
       linked_vendors: vendor.vendor_id,
-      ownership: '',
-      review_frequency: 'Annual',
-      evidence_requirements: `Vendor assurance evidence (SOC 2/ISO cert), DPA, contract, annual review record.`,
+      owner: '',
+      frequency: 'Annual',
+      evidence: `Vendor assurance evidence (SOC 2/ISO cert), DPA, contract, annual review record.`,
     };
     controls.push(ctrl);
   }
@@ -1664,11 +1664,14 @@ app.post('/api/clients/:id/process', (req, res) => {
     return res.json(getClientAggregate(clientId)); // already running
   }
 
-  // Mark as queued immediately so UI sees it
-  pg.generation_status = 'In progress';
-  pg.generation_started_at = new Date().toISOString();
-  pg.generation_stages = newPolicyGenerationStages();
-  saveJson(paths['policy-generation'].file, pg);
+  // Only reset stages if we're doing a full regen — not when policies already exist
+  const existingPolicies = (pg.policies || []).filter(Boolean);
+  if (force || existingPolicies.length === 0) {
+    pg.generation_status = 'In progress';
+    pg.generation_started_at = new Date().toISOString();
+    pg.generation_stages = newPolicyGenerationStages();
+    saveJson(paths['policy-generation'].file, pg);
+  }
 
   // Fire async — don't await — server remains responsive
   runClientProcessing(clientId, force).catch(e => console.error('[process] Error:', e.message));

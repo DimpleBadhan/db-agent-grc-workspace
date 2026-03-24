@@ -6,16 +6,14 @@ This is the public-safe GitHub upload version.
 Local compliance source files are intentionally excluded.
 
 If you need real client-specific workspaces with company-named folders and
-structured records on disk, use the local app at:
-
-`C:\Users\Dimple Badhan\Documents\New project 9\db-agent-local-app`
+structured records on disk, use the local app in the `db-agent-local-app` folder.
 
 ## Run locally
 
 Open `index.html` directly in a browser, or run a small local server:
 
 ```powershell
-cd "C:\Users\Dimple Badhan\Documents\New project 9"
+cd db-agent-github-safe
 py -m http.server 8080
 ```
 
@@ -50,9 +48,7 @@ This repository includes a GitHub Actions workflow at `.github/workflows/deploy-
 
 ## Safe upload folder
 
-If you are uploading manually to GitHub, upload the contents of this folder only:
-
-`C:\Users\Dimple Badhan\Documents\New project 9\db-agent-github-safe`
+If you are uploading manually to GitHub, upload the contents of the `db-agent-github-safe` folder only.
 
 Do not upload `compliance_inputs` from the parent project if you want to keep local source materials private.
 
