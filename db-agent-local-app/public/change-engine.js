@@ -151,28 +151,63 @@ function chDetectVendorChanges(prevVendors, newVendors) {
     }
   });
 
-  // Updated
+  // Updated — watched fields include basic info AND client-specific intel fields
+  const VENDOR_WATCHED_FIELDS = [
+    { field: "vendor_description",           impact: "medium", affects: ["vendor_assessments"] },
+    { field: "purpose",                      impact: "high",   affects: ["vendor_assessments"] },
+    { field: "data_types_handled",           impact: "high",   affects: ["vendor_assessments", "risks"] },
+    { field: "access_level_detail",          impact: "high",   affects: ["vendor_assessments", "risks"] },
+    { field: "stores_processes_data",        impact: "high",   affects: ["vendor_assessments", "risks"] },
+    { field: "business_impact",              impact: "high",   affects: ["vendor_assessments", "risks"] },
+    { field: "has_contract",                 impact: "medium", affects: ["vendor_assessments"] },
+    { field: "has_dpa",                      impact: "high",   affects: ["vendor_assessments", "risks"] },
+    { field: "vendor_certifications_confirmed", impact: "medium", affects: ["vendor_assessments"] },
+    { field: "service_category",             impact: "medium", affects: ["vendor_assessments"] },
+  ];
+
   curr.forEach(vendor => {
     const p = findVendor(prev, vendor.vendor_name);
     if (!p) return;
-    ["vendor_description", "purpose"].forEach(field => {
-      if (JSON.stringify(p[field]) !== JSON.stringify(vendor[field]) && (p[field] || vendor[field])) {
-        changes.push({
-          id: `CHG-V-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          timestamp: new Date().toISOString(),
-          source: "vendors",
-          type: "vendor_updated",
-          label: `${vendor.vendor_name} — ${field.replace(/_/g, " ")} updated`,
-          vendor_name: vendor.vendor_name,
-          field_changed: field,
-          previous_value: p[field],
-          new_value: vendor[field],
-          impact: field === "purpose" ? "high" : "medium",
-          affects: ["vendor_assessments"],
-          status: "pending_review",
-          resolved_at: null
-        });
-      }
+
+    // Detect first-time intel fill (was empty, now filled) as a meaningful update
+    const wasEmpty = !p.data_types_handled && !p.access_level_detail && !p.stores_processes_data;
+    const nowFilled = vendor.data_types_handled || vendor.access_level_detail || vendor.stores_processes_data;
+    if (wasEmpty && nowFilled) {
+      changes.push({
+        id: `CHG-V-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        source: "vendors",
+        type: "vendor_intel_filled",
+        label: `${vendor.vendor_name} — security intel completed`,
+        vendor_name: vendor.vendor_name,
+        impact: "high",
+        affects: ["vendor_assessments", "risks"],
+        status: "pending_review",
+        resolved_at: null
+      });
+      return; // one change per vendor for first-time fill is enough
+    }
+
+    VENDOR_WATCHED_FIELDS.forEach(({ field, impact, affects }) => {
+      const prev_val = p[field];
+      const new_val  = vendor[field];
+      if (JSON.stringify(prev_val) === JSON.stringify(new_val)) return;
+      if (!prev_val && !new_val) return;
+      changes.push({
+        id: `CHG-V-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        source: "vendors",
+        type: "vendor_updated",
+        label: `${vendor.vendor_name} — ${field.replace(/_/g, " ")} updated`,
+        vendor_name: vendor.vendor_name,
+        field_changed: field,
+        previous_value: prev_val,
+        new_value: new_val,
+        impact,
+        affects,
+        status: "pending_review",
+        resolved_at: null
+      });
     });
   });
 
@@ -180,10 +215,13 @@ function chDetectVendorChanges(prevVendors, newVendors) {
 }
 
 function chAssessVendorImpact(vendor) {
-  const desc = `${vendor.vendor_description || ""} ${vendor.purpose || ""}`.toLowerCase();
-  if (/phi|health|hipaa|medical/.test(desc))       return "critical";
-  if (/pci|payment|card|billing/.test(desc))       return "critical";
-  if (/pii|personal data|gdpr/.test(desc))         return "high";
+  const desc = `${vendor.vendor_description || ""} ${vendor.purpose || ""} ${vendor.data_types_handled || ""} ${vendor.business_impact || ""}`.toLowerCase();
+  const access = (vendor.access_level_detail || "").toLowerCase();
+  if (/phi|health|hipaa|medical/.test(desc))                   return "critical";
+  if (/pci|payment|card|billing/.test(desc))                   return "critical";
+  if (/pii|personal data|gdpr/.test(desc))                     return "high";
+  if (/admin|infrastructure|full/.test(access))                return "high";
+  if (vendor.has_dpa === "No" || vendor.has_contract === "No") return "high";
   return "medium";
 }
 
@@ -455,6 +493,18 @@ function chProcessSaveChanges(configKey, prevSnapshot) {
       if (change.vendor_id) {
         mergedImpact.vendorIds.push(change.vendor_id);
       }
+
+      // Vendor intel filled or updated — trigger vendor regen for that specific vendor
+      if (change.type === "vendor_intel_filled" || change.type === "vendor_updated") {
+        const vid = (state?.selectedClientData?.vendorRisk?.vendors || [])
+          .find(v => v.vendor_name === change.vendor_name)?.vendor_id;
+        if (vid) mergedImpact.vendorIds.push(vid);
+        else needsFullVendor = true;
+      }
+      // Vendor added — always needs full vendor regen (new vendor has no id yet)
+      if (change.type === "vendor_added") {
+        needsFullVendor = true;
+      }
     });
 
     // Deduplicate
@@ -465,8 +515,42 @@ function chProcessSaveChanges(configKey, prevSnapshot) {
     const hasTargeted = mergedImpact.riskIds.length > 0 || mergedImpact.vendorIds.length > 0;
 
     if (hasTargeted) chScheduleTargetedRegen(clientId, mergedImpact);
-    if (needsFullRisk && !hasTargeted) chScheduleSelectiveRegen(clientId, "risks");
+    if (needsFullRisk   && !hasTargeted) chScheduleSelectiveRegen(clientId, "risks");
     if (needsFullVendor && !hasTargeted) chScheduleSelectiveRegen(clientId, "vendors");
+
+    // Policy regen — trigger for critical/high onboarding field changes
+    // Only if policies already exist (don't trigger on fresh setup)
+    const hasPolicies = (state?.selectedClientData?.policyGeneration?.policies || []).length > 0;
+    const policyAffectingChanges = allChanges.filter(c =>
+      (c.affects || []).includes("policies") &&
+      ["critical", "high"].includes(c.impact) &&
+      c.source === "onboarding"
+    );
+    if (hasPolicies && policyAffectingChanges.length > 0 && state?.aiEnabled) {
+      // Use targeted policy regen for specific policies, or flag for manual regen
+      // We don't auto-regenerate all policies — too destructive. Instead schedule targeted.
+      const policyIds = (state?.selectedClientData?.policyGeneration?.policies || [])
+        .filter(p => {
+          // Find policies whose category matches the changed fields
+          const affectedCategories = policyAffectingChanges.flatMap(c => {
+            const f = c.field;
+            if (["data_types","classification","encryption"].includes(f)) return ["Data Protection","Privacy"];
+            if (["mfa_enabled","access_model","identity_provider"].includes(f)) return ["Access Control","Identity"];
+            if (["monitoring","backup"].includes(f)) return ["Incident Response","Business Continuity"];
+            if (["cloud_providers","storage_regions","devices_used"].includes(f)) return ["Infrastructure","Endpoint"];
+            if (["framework_selection","framework_selection_v2"].includes(f)) return []; // affects all — skip targeted
+            return [];
+          });
+          return affectedCategories.some(cat =>
+            (p.category || "").toLowerCase().includes(cat.toLowerCase()) ||
+            (p.name || "").toLowerCase().includes(cat.toLowerCase())
+          );
+        })
+        .map(p => p.policy_id);
+      if (policyIds.length > 0) {
+        chScheduleTargetedRegen(clientId, { policyIds, riskIds: [], vendorIds: [] });
+      }
+    }
   }
 }
 

@@ -161,8 +161,9 @@ function newPolicyGenerationStages() {
     ['rewrite',      'Rewrite narrative and tailor content'],
     ['format',       'Format and normalize policy bodies'],
     ['specificity',  'Apply company-specific language and metadata'],
-    ['orchestrator', 'AI — Build company brief'],
-    ['writer',       'AI — Write company-specific policies'],
+    ['orchestrator',    'AI — Build company brief'],
+    ['risk-discovery',  'AI — Discover company-specific risks'],
+    ['writer',          'AI — Write company-specific policies'],
     ['critic',       'AI — Score and review all policies'],
     ['rewriter',     'AI — Fix flagged policies'],
     ['qa',           'Run QA and finalize policy pack'],
@@ -810,6 +811,74 @@ async function buildCompanyBrief(onboarding) {
   return result || base;
 }
 
+async function runRiskDiscoveryAgent(onboarding, brief) {
+  const co       = onboarding.legal_entity || brief.company || 'The Organization';
+  const cloud    = onboarding.cloud_providers   || '';
+  const idp      = onboarding.identity_provider || '';
+  const data     = onboarding.data_types        || '';
+  const classif  = onboarding.classification    || '';
+  const monitor  = onboarding.monitoring        || '';
+  const enc      = onboarding.encryption        || '';
+  const backup   = onboarding.backup            || '';
+  const devices  = onboarding.devices_used      || '';
+  const opSys    = onboarding.operating_systems  || '';
+  const workType = onboarding.work_type          || '';
+  const fwV2     = Array.isArray(onboarding.framework_selection_v2)
+    ? onboarding.framework_selection_v2.join(', ')
+    : (onboarding.framework_selection_v2 || onboarding.framework_selection || '');
+  const pubAccess   = onboarding.publicly_accessible        || '';
+  const irProcess   = onboarding.incident_response_process  || '';
+  const critAccess  = onboarding.critical_access_many       || '';
+  const prodChanges = onboarding.prod_changes_reviewed       || '';
+  const secOwner    = onboarding.security_owner             || '';
+  const vendorList  = (Array.isArray(onboarding.vendors) ? onboarding.vendors : [])
+    .filter(v => v && v.vendor_name)
+    .map(v => `${v.vendor_name} (data: ${v.data_types_handled||'unspecified'}; access: ${v.access_level_detail||'unspecified'})`)
+    .join(', ') || 'none';
+
+  if (!getAnthropic()) return getDerivedTopRisks(onboarding);
+
+  const system = `You are a senior GRC risk analyst. Analyse this company's onboarding profile and identify their real, specific security and compliance risks. Return ONLY a valid JSON array. No markdown, no explanation.`;
+
+  const user = `Analyse ${co} and generate 9-12 specific, company-tailored risks.
+
+COMPANY PROFILE:
+Company: ${co} | Cloud: ${cloud} | Identity: ${idp} | MFA: ${onboarding.mfa_enabled||''} | Access model: ${onboarding.access_model||''}
+Data types: ${data} | Classification: ${classif} | Encryption: ${enc} | Backup: ${backup}
+Monitoring: ${monitor} | Devices: ${devices} | OS: ${opSys} | Work model: ${workType}
+Publicly accessible: ${pubAccess} | IR process: ${irProcess} | Critical access (many people): ${critAccess}
+Prod changes peer-reviewed: ${prodChanges} | Security owner: ${secOwner}
+Compliance framework: ${fwV2}
+Vendors: ${vendorList}
+
+For each risk return a JSON object with these exact fields:
+{
+  "title": "short specific risk title referencing actual ${co} context",
+  "category": "one of: Data Protection | Access Control | Vendor Risk | Infrastructure | Incident Response | Business Continuity | Change Management | Compliance",
+  "threat_source": "specific threat actor or cause relevant to ${co}",
+  "why_this_company": "1-2 sentences explaining why THIS company specifically faces this risk — reference actual tools, data types, vendors",
+  "likelihood": number 1-5,
+  "impact": number 1-5,
+  "likelihood_justification": "specific justification referencing ${co}'s environment",
+  "impact_justification": "specific justification referencing ${co}'s data and operations"
+}
+
+Rules:
+- Every risk must reference ${co}'s actual environment — name tools, data types, vendors
+- Do NOT use generic titles like "Data Breach" — be specific e.g. "Client PII exposure via AWS S3 misconfiguration"
+- Cover a range of categories — do not duplicate categories
+- Calibrate likelihood/impact based on actual posture (e.g. if IR process exists, lower likelihood of undetected breach)`;
+
+  const raw = await invokeClaudeApi(system, user, 6000);
+  const result = extractJsonArray(raw);
+  if (!result || result.length === 0) {
+    console.log('[RiskDiscovery] AI returned no results, using derived risks');
+    return getDerivedTopRisks(onboarding);
+  }
+  console.log(`[RiskDiscovery] Generated ${result.length} company-specific risks for ${co}`);
+  return result;
+}
+
 async function runPolicyWriterAgent(policies, brief, onboarding) {
   if (!process.env.ANTHROPIC_API_KEY) return policies;
 
@@ -839,20 +908,33 @@ async function runPolicyWriterAgent(policies, brief, onboarding) {
   const complianceReq = onboarding.compliance_proof_requested || '';
   const secOwner      = onboarding.security_owner || '';
   const dataLeakImpact= onboarding.data_leak_impact || '';
+  const devices       = onboarding.devices_used || '';
+  const opSystems     = onboarding.operating_systems || '';
+  const storageRegion = onboarding.storage_regions || '';
+  const workType      = onboarding.work_type || '';
+  const companyType   = onboarding.company_type || '';
+  const fwV2          = Array.isArray(onboarding.framework_selection_v2)
+    ? onboarding.framework_selection_v2.join(', ')
+    : (onboarding.framework_selection_v2 || fw || '');
 
   const vendorList = (Array.isArray(onboarding.vendors) ? onboarding.vendors : [])
     .filter(v => v && v.vendor_name)
     .map(v => `${v.vendor_name}${v.service_category ? ` (${v.service_category})` : ''}(data: ${v.data_types_handled||'unspecified'}; access: ${v.access_level_detail||'unspecified'})`)
     .join('; ') || 'none recorded';
 
+  const topRisksList = getDerivedTopRisks(onboarding)
+    .map(r => `${r.title} (${r.category}) — threat: ${r.threat_source}`)
+    .join('\n  ');
+
   const system = `You are ${co}'s senior GRC consultant authoring official, audit-credible compliance policies.
 
 COMPANY CONTEXT — embed these specifics in every policy:
-Company: ${co} | Industry: ${industry} | Headcount: ${headcount}
-Cloud / hosting: ${cloud} | Identity provider: ${idp} | MFA: ${mfa} | Access model: ${access}
+Company: ${co} | Industry: ${industry} | Headcount: ${headcount} | Company type: ${companyType}
+Work model: ${workType} | Cloud / hosting: ${cloud} | Identity provider: ${idp} | MFA: ${mfa} | Access model: ${access}
+Devices used: ${devices} | Operating systems: ${opSystems} | Storage regions: ${storageRegion}
 Data types: ${data} | Classification: ${classif} | Encryption: ${enc}
 Backup: ${backup} | Monitoring / SIEM: ${monitor}
-Frameworks: ${fw} | Key risks: ${risks}
+Compliance frameworks: ${fwV2} | Key risks: ${risks}
 
 SECURITY POSTURE (use to calibrate control requirements):
 Publicly accessible systems: ${pubAccess} | Prod/test separation: ${prodSep}
@@ -860,6 +942,9 @@ IR process in place: ${irProcess} | Security logs reviewed regularly: ${logsRevi
 Backups tested: ${backupTested} | Many people with critical/admin access: ${critAccess}
 Prod changes peer-reviewed: ${prodChanges} | Compliance proof requested by customers: ${complianceReq}
 Security/compliance owner: ${secOwner} | Data leak business impact: ${dataLeakImpact}
+
+TOP RISKS THIS POLICY PACK MUST ADDRESS (reference relevant ones in each policy):
+  ${topRisksList}
 
 VENDOR / TECHNOLOGY STACK (name these in relevant policy sections):
 ${vendorList}
@@ -869,6 +954,10 @@ MANDATORY WRITING RULES — all rules apply to every policy:
 2. TOOL SPECIFICITY: Name actual tools from the company context — not "a cloud provider" but "${cloud}"; not "an identity system" but "${idp}"; not "monitoring tools" but "${monitor}."
 3. DATA SPECIFICITY: Reference ${data} and ${classif} explicitly. Not "sensitive data" but the actual data types.
 4. SECURITY POSTURE: If ${pubAccess} is Yes, include explicit internet-facing controls. If ${irProcess} is No or empty, include building IR capability as a requirement.
+4a. DEVICE & OS SPECIFICITY: Where relevant, reference the actual devices (${devices}) and operating systems (${opSystems}) used. Endpoint and workstation policies must name these.
+4b. WORK MODEL: The company operates ${workType} — reflect this in policies covering access, remote work, and device management.
+4c. DATA RESIDENCY: Storage region is ${storageRegion} — reference this in data handling and privacy policies.
+4d. FRAMEWORK SPECIFICITY: The applicable compliance framework is ${fwV2} — use the full name, not a shorthand.
 5. HEADINGS: Subsection headings must be on their own line followed by a blank line. Never inline a heading with content.
 6. LISTS: Three or more obligations become a numbered list.
 7. AUDITABLE CONTROLS: Every control statement must name who owns it, what they must do, and how often.
@@ -1086,7 +1175,7 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
   const paths = getSectionPaths(clientId);
   let pg = readJson(paths['policy-generation'].file, newDefaultSection('policy-generation', clientId, clientId));
   const onboarding = readJson(paths.onboarding.file, newDefaultSection('onboarding', clientId, clientId));
-  const topRisks = getDerivedTopRisks(onboarding);
+  let topRisks = getDerivedTopRisks(onboarding); // will be replaced by AI-discovered risks
 
   try {
     writeAuditLog(clientId, 'processing_started', { client_id: clientId });
@@ -1133,6 +1222,22 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
         const brief = await buildCompanyBrief(onboarding);
         pg.company_brief = brief;
         completeStage(pg, 'orchestrator');
+
+        // Agent 1b — Risk Discovery
+        pg = startStage(pg, 'risk-discovery', 'Risk discovery agent — identifying company-specific risks.');
+        saveJson(paths['policy-generation'].file, pg);
+        const discoveredRisks = await runRiskDiscoveryAgent(onboarding, brief);
+        topRisks = discoveredRisks; // replace hardcoded list with AI-discovered risks
+        // Save discovered risks to risk assessment so policies and risks are aligned
+        const raFile = paths['risk-assessment'].file;
+        const existingRa = readJson(raFile, {});
+        const discoveredRaSection = buildRiskAssessmentSection(onboarding, topRisks, finalPolicies);
+        saveJson(raFile, { ...existingRa, ...discoveredRaSection, risks: discoveredRaSection.risks });
+        // Rebuild policy drafts with discovered risks so linked_risks are accurate
+        const draftsWithRisks = newPolicyDraftRecords(onboarding, topRisks);
+        finalPolicies = applyPolicyGovernance(finalPolicies, draftsWithRisks, onboarding);
+        completeStage(pg, 'risk-discovery');
+        saveJson(paths['policy-generation'].file, pg);
 
         // Agent 2 — Policy Writer
         pg = startStage(pg, 'writer', 'Policy writer agent — rewriting with company-specific depth.');
@@ -1473,7 +1578,12 @@ app.put('/api/clients/:id/:sectionKey', (req, res) => {
     Object.assign(current, payload);
 
     if (sectionKey === 'policy-generation') {
-      current.policies = applyPolicyGovernance(previous.policies || [], payload.policies || [], readJson(paths.onboarding.file, {}));
+      // Only merge if policies were actually sent — never wipe existing with an empty array
+      if (Array.isArray(payload.policies) && payload.policies.length > 0) {
+        current.policies = applyPolicyGovernance(previous.policies || [], payload.policies, readJson(paths.onboarding.file, {}));
+      } else {
+        current.policies = previous.policies || [];
+      }
       writeAuditLog(clientId, 'policy_generation_saved', { client_id: clientId, policy_count: (current.policies||[]).length });
     }
     if (sectionKey === 'onboarding') {
