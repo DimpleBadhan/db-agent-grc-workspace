@@ -1,7 +1,21 @@
+# Node.js
+node_modules/
+package-lock.json
+
+# Environment / secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Client data
 data/clients/*
 !data/clients/.gitkeep
-*.log
 local-processing-store/
 framework-cache/
 template-cache/
+
+# Logs and debug output
+*.log
 response-errors.log
+vendor-agent-debug.txt
+*.debug.txt

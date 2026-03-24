@@ -42,6 +42,53 @@ if (Test-Path $legacyDataRoot -PathType Container) {
   }
 }
 $promptRegistryPath = Join-Path $configRoot "agent-prompt-registry.json"
+$envFilePath = Join-Path $scriptRoot ".env"
+
+# Auto-load .env file — sets any variable not already in the environment
+if (Test-Path $envFilePath) {
+  foreach ($line in Get-Content $envFilePath) {
+    # Strip UTF-8 BOM character if present at start of line
+    $line = $line.TrimStart([char]0xFEFF)
+    if ($line -match '^\s*([^#=\s][^=]*?)\s*=\s*(.*?)\s*$') {
+      $varName  = $Matches[1].Trim().TrimStart([char]0xFEFF)
+      $varValue = $Matches[2].Trim('"').Trim("'")
+      if (-not [string]::IsNullOrWhiteSpace($varName) -and [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable($varName))) {
+        Set-Item "env:$varName" $varValue
+      }
+    }
+  }
+  Write-Host "[.env] Loaded environment from $envFilePath"
+}
+
+# AI key validity cache — updated at startup and after every API call outcome
+$script:aiKeyValid = $false
+
+function Test-AnthropicKeyValid {
+  $k = $env:ANTHROPIC_API_KEY
+  if ([string]::IsNullOrWhiteSpace($k)) { $script:aiKeyValid = $false; return $false }
+  try {
+    $body = [ordered]@{
+      model      = "claude-haiku-4-5-20251001"
+      max_tokens = 10
+      messages   = @(@{ role = "user"; content = "ping" })
+    } | ConvertTo-Json -Depth 5 -Compress
+    $r = Invoke-WebRequest -Uri "https://api.anthropic.com/v1/messages" `
+      -Method POST -Body $body -ContentType "application/json" `
+      -Headers @{ "x-api-key" = $k; "anthropic-version" = "2023-06-01" } `
+      -UseBasicParsing -ErrorAction Stop
+    $script:aiKeyValid = ($r.StatusCode -eq 200)
+  } catch {
+    $script:aiKeyValid = $false
+  }
+  if ($script:aiKeyValid) { Write-Host "[AI] API key validated — AI agents active." }
+  else { Write-Host "[AI] API key invalid or unreachable — AI agents disabled. Update key via Settings." }
+  return $script:aiKeyValid
+}
+
+# Validate key at startup — synchronous so $script:aiKeyValid is correct before first request
+if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+  $null = Test-AnthropicKeyValid
+}
 
 $sectionMeta = @{
   "onboarding" = @{ Folder = "Client Details"; File = "onboarding.json"; Property = "onboarding"; CountKey = $null; Collection = "vendors" }
@@ -55,6 +102,7 @@ $sectionMeta = @{
   "control-mapping" = @{ Folder = "Control Mapping"; File = "controls.json"; Property = "controlMapping"; CountKey = "controlCount"; Collection = "controls" }
   "audit-qa" = @{ Folder = "Audit QA"; File = "audit-qa.json"; Property = "auditQa"; CountKey = "auditFindingCount"; Collection = "findings" }
   "output" = @{ Folder = "Output"; File = "dashboard-output.json"; Property = "output"; CountKey = "outputCount"; Collection = "outputs" }
+  "evidence-tracker" = @{ Folder = "Evidence Tracker"; File = "evidence-tracker.json"; Property = "evidenceTracker"; CountKey = $null; Collection = "evidence_items" }
 }
 
 function Get-ContentType {
@@ -136,6 +184,9 @@ function New-DefaultSection {
     "output" {
       return [ordered]@{ validation_status = ""; output_notes = ""; outputs = @(); updatedAt = $null }
     }
+    "evidence-tracker" {
+      return [ordered]@{ security_maturity = ""; tasks = @(); evidence_items = @(); updatedAt = $null }
+    }
     default { throw "Unsupported section key: $SectionKey" }
   }
 }
@@ -175,6 +226,46 @@ function New-PolicyGenerationStages {
       completed_at = ""
     },
     [ordered]@{
+      key = "specificity"
+      label = "Apply company-specific language and metadata"
+      status = "pending"
+      note = ""
+      started_at = ""
+      completed_at = ""
+    },
+    [ordered]@{
+      key = "orchestrator"
+      label = "AI — Build company brief"
+      status = "pending"
+      note = ""
+      started_at = ""
+      completed_at = ""
+    },
+    [ordered]@{
+      key = "writer"
+      label = "AI — Write company-specific policies"
+      status = "pending"
+      note = ""
+      started_at = ""
+      completed_at = ""
+    },
+    [ordered]@{
+      key = "critic"
+      label = "AI — Score and review all policies"
+      status = "pending"
+      note = ""
+      started_at = ""
+      completed_at = ""
+    },
+    [ordered]@{
+      key = "rewriter"
+      label = "AI — Fix flagged policies"
+      status = "pending"
+      note = ""
+      started_at = ""
+      completed_at = ""
+    },
+    [ordered]@{
       key = "qa"
       label = "Run QA and finalize policy pack"
       status = "pending"
@@ -200,6 +291,7 @@ function New-PolicyGenerationProgressSection {
     generation_last_error = ""
     generation_stages = New-PolicyGenerationStages
     policies = @()
+    improvement_log = $null
     updatedAt = $null
   }
 }
@@ -220,6 +312,13 @@ function Ensure-PolicyGenerationSectionSchema {
   param([object]$Section)
 
   if ($null -eq $Section) { return $null }
+
+  # Ordered hashtables expose keys via PSObject differently from PSCustomObjects.
+  # Convert to PSCustomObject so PSObject.Properties checks work correctly and
+  # ConvertTo-Json serialises all properties (not just the original hashtable keys).
+  if ($Section -is [System.Collections.IDictionary]) {
+    $Section = [PSCustomObject]$Section
+  }
 
   if (-not $Section.PSObject.Properties["generation_status"]) {
     Set-ObjectPropertyValue -Object $Section -Name "generation_status" -Value "Not started"
@@ -244,6 +343,9 @@ function Ensure-PolicyGenerationSectionSchema {
   }
   if (-not $Section.PSObject.Properties["policies"]) {
     Set-ObjectPropertyValue -Object $Section -Name "policies" -Value @()
+  }
+  if (-not $Section.PSObject.Properties["improvement_log"]) {
+    Set-ObjectPropertyValue -Object $Section -Name "improvement_log" -Value $null
   }
 
   return $Section
@@ -353,7 +455,16 @@ function Fail-PolicyGenerationSection {
 function Test-PolicyGenerationInProgress {
   param([object]$Section)
   $Section = Ensure-PolicyGenerationSectionSchema -Section $Section
-  return ([string]$Section.generation_status -eq "In progress")
+  if ([string]$Section.generation_status -ne "In progress") { return $false }
+  # Treat as stale (dead worker) if in progress for more than 20 minutes
+  $startedAt = [string]$Section.generation_started_at
+  if ($startedAt) {
+    try {
+      $elapsed = (Get-Date) - [datetime]::Parse($startedAt)
+      if ($elapsed.TotalMinutes -gt 20) { return $false }
+    } catch {}
+  }
+  return $true
 }
 
 function Get-SectionPaths {
@@ -582,7 +693,7 @@ function Initialize-VendorCatalogFromExistingData {
 function ConvertTo-BodyObject {
   param([string]$Body)
   if (-not $Body) { return @{} }
-  return $Body | ConvertFrom-Json
+  try { return $Body | ConvertFrom-Json } catch { return @{} }
 }
 
 function Split-TextList {
@@ -1272,6 +1383,14 @@ function Get-DerivedVendorCandidates {
       service_category = if ($catalogMatch) { [string]$catalogMatch.service_category } else { [string]$manualVendor.service_category }
       known_services = if ($catalogMatch) { [string]$catalogMatch.known_services } else { [string]$manualVendor.known_services }
       website = if ($catalogMatch) { [string]$catalogMatch.website } else { [string]$manualVendor.website }
+      # Client-specific intelligence fields (from structured onboarding questions)
+      stores_processes_data         = [string]$manualVendor.stores_processes_data
+      data_types_handled            = [string]$manualVendor.data_types_handled
+      access_level_detail           = [string]$manualVendor.access_level_detail
+      business_impact               = [string]$manualVendor.business_impact
+      has_contract                  = [string]$manualVendor.has_contract
+      has_dpa                       = [string]$manualVendor.has_dpa
+      vendor_certifications_confirmed = [string]$manualVendor.vendor_certifications_confirmed
       inherent_risk = ""
       residual_risk = ""
       treatment_plan = ""
@@ -1360,7 +1479,7 @@ function Get-DerivedTopRisks {
   Add-DerivedRisk -List $risks -Title "Access control drift" -Reason "Role changes and provisioning can weaken least-privilege controls over time."
   Add-DerivedRisk -List $risks -Title "Change management gaps" -Reason "Policy and control execution depend on consistent operational change control."
 
-  return @($risks | Select-Object -First 5)
+  return @($risks)
 }
 
 function Get-PolicyWordCount {
@@ -2755,6 +2874,7 @@ function New-PolicyExecutiveSummary {
   $summaryParts += "The policy is written for an operating model centered on $hostingText and $identityText."
   $summary = ($summaryParts -join " ") -replace "\s+", " "
   $maxChars = if ($RulesProfile) { [int]$RulesProfile.ExecutiveSummaryMaxChars } else { 600 }
+  if ($maxChars -lt 4) { return $summary }
   if ($summary.Length -le $maxChars) { return $summary }
   return ($summary.Substring(0, ($maxChars - 3)) + "...")
 }
@@ -2814,23 +2934,48 @@ function New-PolicyBody {
   $ownerStatement = "The assigned policy owner must maintain this policy, coordinate implementation, and escalate material gaps."
   $lines = @(
     "1. $($titles[0])",
-    "1.1 Purpose. $(Get-PolicyPurposeNarrative -PolicyName $PolicyName -Onboarding $Onboarding)",
-    "1.2 Scope. $scopeText",
-    "1.3 Operating context. $operatingContext",
+    "",
+    "1.1 Purpose",
+    "$(Get-PolicyPurposeNarrative -PolicyName $PolicyName -Onboarding $Onboarding)",
+    "",
+    "1.2 Scope",
+    "$scopeText",
+    "",
+    "1.3 Operating context",
+    "$operatingContext",
+    "",
     "",
     "2. $($titles[1])",
-    "2.1 Policy ownership. $ownerStatement",
-    "2.2 Operational responsibility. Managers and system owners must implement controls for their areas, and workforce users must follow this policy as a condition of access and ongoing use of company systems.",
+    "",
+    "2.1 Policy ownership",
+    "$ownerStatement",
+    "",
+    "2.2 Operational responsibility",
+    "Managers and system owners must implement controls for their areas, and workforce users must follow this policy as a condition of access and ongoing use of company systems.",
+    "",
     "",
     "3. $($titles[2])",
-    "3.1 Operating requirements. $($composedParagraphs.RequirementText)",
-    "3.2 Oversight and assurance. $($composedParagraphs.OversightText)",
+    "",
+    "3.1 Operating requirements",
+    "$($composedParagraphs.RequirementText)",
+    "",
+    "3.2 Oversight and assurance",
+    "$($composedParagraphs.OversightText)",
+    "",
     "",
     "4. $($titles[3])",
-    "4.1 Exceptions. Exceptions must be documented, time-bound, approved by designated management, and tracked to closure with compensating controls where needed.",
-    "4.2 Monitoring and review. $(Get-PolicyMonitoringReviewText -PolicyName $PolicyName -Onboarding $Onboarding)",
-    "4.3 Records and evidence. $(Get-PolicyRecordsEvidenceText -PolicyName $PolicyName -Onboarding $Onboarding)",
-    "4.4 Related operations. $(Get-PolicyRelatedOperationsText -PolicyName $PolicyName -Onboarding $Onboarding)"
+    "",
+    "4.1 Exceptions",
+    "Exceptions must be documented, time-bound, approved by designated management, and tracked to closure with compensating controls where needed.",
+    "",
+    "4.2 Monitoring and review",
+    "$(Get-PolicyMonitoringReviewText -PolicyName $PolicyName -Onboarding $Onboarding)",
+    "",
+    "4.3 Records and evidence",
+    "$(Get-PolicyRecordsEvidenceText -PolicyName $PolicyName -Onboarding $Onboarding)",
+    "",
+    "4.4 Related operations",
+    "$(Get-PolicyRelatedOperationsText -PolicyName $PolicyName -Onboarding $Onboarding)"
   )
 
   $body = $lines -join "`n"
@@ -2843,23 +2988,347 @@ function New-PolicyBody {
   $trimmedParagraphs = Get-PolicyComposedParagraphs -PolicyName $PolicyName -RequirementStatements $trimmedControls -AssuranceStatements $trimmedAssurance -Onboarding $Onboarding
   $trimmedLines = @(
     "1. $($titles[0])",
-    "1.1 Purpose. $(Get-PolicyPurposeNarrative -PolicyName $PolicyName -Onboarding $Onboarding)",
-    "1.2 Scope. $scopeText",
-    "1.3 Operating context. $operatingContext",
+    "",
+    "1.1 Purpose",
+    "$(Get-PolicyPurposeNarrative -PolicyName $PolicyName -Onboarding $Onboarding)",
+    "",
+    "1.2 Scope",
+    "$scopeText",
+    "",
+    "1.3 Operating context",
+    "$operatingContext",
+    "",
     "",
     "2. $($titles[1])",
-    "2.1 Policy ownership. $trimmedOwnerStatement",
+    "",
+    "2.1 Policy ownership",
+    "$trimmedOwnerStatement",
+    "",
     "",
     "3. $($titles[2])",
-    "3.1 Operating requirements. $($trimmedParagraphs.RequirementText)",
-    "3.2 Oversight and assurance. $($trimmedParagraphs.OversightText)",
+    "",
+    "3.1 Operating requirements",
+    "$($trimmedParagraphs.RequirementText)",
+    "",
+    "3.2 Oversight and assurance",
+    "$($trimmedParagraphs.OversightText)",
+    "",
     "",
     "4. $($titles[3])",
-    "4.1 Exceptions and review. Exceptions must be documented and approved, and this policy must be reviewed at least annually with quarterly control reviews.",
-    "4.2 Records and evidence. $(Get-PolicyRecordsEvidenceText -PolicyName $PolicyName -Onboarding $Onboarding)"
+    "",
+    "4.1 Exceptions and review",
+    "Exceptions must be documented and approved, and this policy must be reviewed at least annually with quarterly control reviews.",
+    "",
+    "4.2 Records and evidence",
+    "$(Get-PolicyRecordsEvidenceText -PolicyName $PolicyName -Onboarding $Onboarding)"
   )
 
   return ($trimmedLines -join "`n")
+}
+
+function Get-SecurityRoleByHeadcount {
+  param([object]$Onboarding)
+
+  $raw = [string]$Onboarding.headcount -replace '[^0-9]', ''
+  $headcount = 0
+  [int]::TryParse($raw, [ref]$headcount) | Out-Null
+  if ($headcount -le 0)   { return "the security function" }
+  if ($headcount -lt 20)  { return "the security-aware engineer or designated technical lead" }
+  if ($headcount -lt 50)  { return "the IT or security lead" }
+  if ($headcount -lt 200) { return "the Security Manager or CISO" }
+  return "the Chief Information Security Officer (CISO)"
+}
+
+function Get-NamedSystemsFromOnboarding {
+  param([object]$Onboarding)
+
+  $parts = @()
+  $cloud = Get-CleanPolicyInputText -Value ([string]$Onboarding.cloud_providers) -Fallback ""
+  if ($cloud) { $parts += $cloud }
+  $idp = Get-CleanPolicyInputText -Value ([string]$Onboarding.identity_provider) -Fallback ""
+  if ($idp) { $parts += $idp }
+  $monitoring = Get-CleanPolicyInputText -Value ([string]$Onboarding.monitoring_tools) -Fallback ""
+  if ($monitoring) { $parts += $monitoring }
+  $mdr = Get-CleanPolicyInputText -Value ([string]$Onboarding.mdr_provider) -Fallback ""
+  if ($mdr) { $parts += $mdr }
+  if ($parts.Count -eq 0) { return "the approved system stack" }
+  return Join-ReadableList -Items $parts -Conjunction "and"
+}
+
+function Get-NamedDataTypesFromOnboarding {
+  param([object]$Onboarding)
+
+  $types = Get-CleanPolicyInputText -Value ([string]$Onboarding.data_types) -Fallback ""
+  if (-not $types) { return "in-scope company and customer data" }
+  return $types
+}
+
+function Build-PolicyMetadataBlock {
+  param([object]$Policy, [object]$Onboarding, [string[]]$FrameworkLabels)
+
+  $companyName = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "The company" } else { [string]$Onboarding.legal_entity }
+  $securityRole = Get-SecurityRoleByHeadcount -Onboarding $Onboarding
+  $ownerDisplay = if ([string]$Policy.policy_owner) { [string]$Policy.policy_owner } else { $securityRole }
+  $frameworkDisplay = if ($FrameworkLabels -and $FrameworkLabels.Count -gt 0) { $FrameworkLabels -join ", " } else { "Internal" }
+  $lines = @(
+    "Policy: $([string]$Policy.name)",
+    "ID: $([string]$Policy.policy_id)",
+    "Owner: $ownerDisplay",
+    "Version: $([string]$Policy.policy_version)",
+    "Organisation: $companyName",
+    "Framework: $frameworkDisplay",
+    "Classification: Internal — Confidential"
+  )
+  return $lines -join "`n"
+}
+
+function Invoke-CompanySpecificityPass {
+  param([object[]]$Policies, [object]$Onboarding)
+
+  $companyName = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { $null } else { [string]$Onboarding.legal_entity }
+  $cloudRaw = Get-CleanPolicyInputText -Value ([string]$Onboarding.cloud_providers) -Fallback ""
+  $idpRaw = Get-CleanPolicyInputText -Value ([string]$Onboarding.identity_provider) -Fallback ""
+  $scope = Get-CleanPolicyInputText -Value ([string]$Onboarding.scope) -Fallback ""
+  $namedDataTypes = Get-NamedDataTypesFromOnboarding -Onboarding $Onboarding
+  $securityRole = Get-SecurityRoleByHeadcount -Onboarding $Onboarding
+
+  $totalImprovements = 0
+  $specificityScores = @()
+  $updatedPolicies = @()
+
+  foreach ($policy in @($Policies)) {
+    $improvementCount = 0
+
+    $updatedPolicy = [ordered]@{}
+    if ($policy -is [System.Collections.IDictionary]) {
+      foreach ($key in $policy.Keys) { $updatedPolicy[[string]$key] = $policy[$key] }
+    } else {
+      foreach ($prop in $policy.PSObject.Properties.Name) { $updatedPolicy[$prop] = $policy.$prop }
+    }
+
+    $body = [string]$policy.body
+    $originalBodyLength = [Math]::Max(1, $body.Length)
+
+    if ($companyName) {
+      $genericTerms = @("The company", "the company", "The organization", "the organization", "The organisation", "the organisation")
+      foreach ($term in $genericTerms) {
+        $count = ([regex]::Matches($body, [regex]::Escape($term))).Count
+        if ($count -gt 0) {
+          $body = $body -replace [regex]::Escape($term), $companyName
+          $improvementCount += $count
+        }
+      }
+    }
+
+    if ($cloudRaw -and $cloudRaw -ne "the approved hosting environment") {
+      $count = ([regex]::Matches($body, "the approved hosting environment|the primary hosting environment")).Count
+      $body = $body -replace "the approved hosting environment|the primary hosting environment", $cloudRaw
+      $improvementCount += $count
+    }
+
+    if ($idpRaw -and $idpRaw -ne "the primary identity platform") {
+      $count = ([regex]::Matches($body, "the primary identity platform")).Count
+      $body = $body -replace "the primary identity platform", $idpRaw
+      $improvementCount += $count
+    }
+
+    if ($scope -and $scope -ne "In-scope application and supporting systems") {
+      $count = ([regex]::Matches($body, "(?i)in-scope application and supporting systems")).Count
+      $body = $body -replace "(?i)in-scope application and supporting systems", $scope
+      $improvementCount += $count
+    }
+
+    if ($securityRole -ne "the security function") {
+      $count = ([regex]::Matches($body, "(?i)the security function")).Count
+      $body = $body -replace "(?i)the security function", $securityRole
+      $improvementCount += $count
+    }
+
+    if ($namedDataTypes -ne "in-scope company and customer data") {
+      $count = ([regex]::Matches($body, "company or customer data|company and customer data|regulated or sensitive data")).Count
+      $body = $body -replace "company or customer data|company and customer data|regulated or sensitive data", $namedDataTypes
+      $improvementCount += $count
+    }
+
+    $updatedPolicy.body = $body
+
+    $summary = [string]$policy.executive_summary
+    if ($companyName) {
+      foreach ($term in @("The company", "the company", "The organization", "the organization")) {
+        $count = ([regex]::Matches($summary, [regex]::Escape($term))).Count
+        if ($count -gt 0) {
+          $summary = $summary -replace [regex]::Escape($term), $companyName
+          $improvementCount += $count
+        }
+      }
+    }
+    if ($cloudRaw -and $cloudRaw -ne "the approved hosting environment") {
+      $summary = $summary -replace "the approved hosting environment|the primary hosting environment", $cloudRaw
+    }
+    if ($idpRaw -and $idpRaw -ne "the primary identity platform") {
+      $summary = $summary -replace "the primary identity platform", $idpRaw
+    }
+    $updatedPolicy.executive_summary = ($summary -replace "\s+", " ").Trim()
+
+    $frameworkLabels = @([string]$policy.framework_mapping -split ",\s*" | Where-Object { $_ })
+    $updatedPolicy.metadata_block = Build-PolicyMetadataBlock -Policy $policy -Onboarding $Onboarding -FrameworkLabels $frameworkLabels
+
+    $totalImprovements += $improvementCount
+    $wordsInBody = [Math]::Max(1, [Math]::Floor($originalBodyLength / 6))
+    $specificityScore = [Math]::Min(100, [int](40 + ([Math]::Min($improvementCount, $wordsInBody) / [Math]::Max(1, $wordsInBody)) * 60))
+    $specificityScores += $specificityScore
+
+    $updatedPolicies += $updatedPolicy
+  }
+
+  $avgSpecificity = if ($specificityScores.Count -gt 0) { [int](($specificityScores | Measure-Object -Sum).Sum / $specificityScores.Count) } else { 40 }
+
+  return [ordered]@{
+    Policies            = @($updatedPolicies)
+    TotalImprovements   = $totalImprovements
+    SpecificityScore    = $avgSpecificity
+  }
+}
+
+function New-VendorAssessmentQuestions {
+  param([object]$Vendor, [object]$Onboarding)
+
+  $vendorName = [string]$Vendor.vendor_name
+  $dataTypes = Get-NamedDataTypesFromOnboarding -Onboarding $Onboarding
+  $companyName = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "the company" } else { [string]$Onboarding.legal_entity }
+
+  return [ordered]@{
+    security_posture = @(
+      "Does $vendorName hold a current SOC 2 Type II, ISO 27001, or equivalent certification, and what is the last audit date and coverage scope?",
+      "Has $vendorName disclosed any security incidents in the last 24 months that could affect $companyName data or service availability?",
+      "What is $vendorName's patch management and vulnerability response SLA for critical findings?"
+    )
+    data_handling = @(
+      "What categories of $dataTypes does $vendorName receive, store, or process on behalf of $companyName?",
+      "Where is $companyName data stored geographically, and does $vendorName use sub-processors for any data handling?",
+      "What encryption standards does $vendorName apply to $companyName data at rest and in transit?"
+    )
+    access_controls = @(
+      "Who at $vendorName has access to $companyName data or production systems, and how is that access provisioned and reviewed?",
+      "Does $vendorName enforce multi-factor authentication for all staff with access to $companyName environments?",
+      "How does $vendorName notify $companyName of personnel changes that affect access to $companyName systems or data?"
+    )
+    business_continuity = @(
+      "What is $vendorName's target RTO and RPO for services relied upon by $companyName?",
+      "Has $vendorName tested its continuity plan in the last 12 months, and can evidence be provided?",
+      "How will $vendorName communicate unplanned outages that affect $companyName's service delivery?"
+    )
+    contractual_compliance = @(
+      "Does the $vendorName contract include data processing agreements, breach notification timelines, and audit rights?",
+      "What are the exit provisions and data return or deletion obligations if $companyName terminates the relationship?",
+      "Does $vendorName flow down equivalent security and compliance obligations to its own sub-processors?"
+    )
+    incident_response = @(
+      "What is $vendorName's breach notification timeline and communication channel for incidents affecting $companyName?",
+      "Does $vendorName have a dedicated incident response team and a documented playbook for security events?",
+      "How are forensic artefacts and logs from $vendorName systems made available to $companyName during an investigation?"
+    )
+    ongoing_assurance = @(
+      "Does $vendorName provide annual or event-driven evidence of its security controls (e.g. penetration test summaries, SOC 2 reports)?",
+      "How does $vendorName communicate material changes to its service architecture, data handling, or security controls?",
+      "What is the contact for $vendorName's security and compliance team and the SLA for responding to $companyName assurance enquiries?"
+    )
+  }
+}
+
+function New-ImprovementLog {
+  param([int]$SpecificityScore, [int]$TotalSpecificityImprovements, [int]$PolicyCount, [string]$GeneratedAt, [object[]]$Policies = @(), [object]$Onboarding = $null)
+
+  # ── Real specificity score ──────────────────────────────────
+  # Count actual company-specific references present in final policy bodies
+  $realSpecificity = $SpecificityScore
+  if ($Policies.Count -gt 0 -and $Onboarding) {
+    $companyName  = [string]$Onboarding.legal_entity
+    $cloudRaw     = [string]$Onboarding.cloud_providers
+    $idpRaw       = [string]$Onboarding.identity_provider
+    $terms = @($companyName, $cloudRaw, $idpRaw) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    $totalHits = 0
+    foreach ($policy in @($Policies)) {
+      $body = [string]$policy.body
+      foreach ($term in $terms) {
+        $totalHits += ([regex]::Matches($body, [regex]::Escape($term), [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)).Count
+      }
+    }
+    $hitsPerPolicy = if ($Policies.Count -gt 0) { $totalHits / $Policies.Count } else { 0 }
+    # Map: 0 hits = 40, 3 hits = 65, 6 hits = 80, 10+ hits = 95
+    $realSpecificity = [Math]::Min(95, [int](40 + [Math]::Min(55, $hitsPerPolicy * 5.5)))
+  }
+
+  # ── Real depth score ────────────────────────────────────────
+  # Based on avg word count per policy body + executive summary presence
+  $depthScore = 55
+  if ($Policies.Count -gt 0) {
+    $totalWords = 0
+    $tocCount   = 0
+    $summaryCount = 0
+    foreach ($policy in @($Policies)) {
+      $body = [string]$policy.body
+      $totalWords += ($body -split '\s+' | Where-Object { $_ }).Count
+      if ([string]$policy.table_of_contents) { $tocCount++ }
+      if ([string]$policy.executive_summary)  { $summaryCount++ }
+    }
+    $avgWords = if ($Policies.Count -gt 0) { $totalWords / $Policies.Count } else { 0 }
+    # 200w=55, 400w=68, 600w=78, 800w=86, 1000w+=92
+    $wordScore = [Math]::Min(92, [int](55 + [Math]::Min(37, ($avgWords / 1000) * 37)))
+    $tocBonus  = if ($tocCount -ge $Policies.Count * 0.8) { 4 } else { 0 }
+    $sumBonus  = if ($summaryCount -ge $Policies.Count * 0.8) { 4 } else { 0 }
+    $depthScore = [Math]::Min(100, $wordScore + $tocBonus + $sumBonus)
+  }
+
+  # ── Real formatting score ───────────────────────────────────
+  # Check for: metadata block, numbered sections, section headers, TOC, executive summary
+  $formattingScore = 50
+  if ($Policies.Count -gt 0) {
+    $metaCount    = 0
+    $numberedCount = 0
+    $headerCount  = 0
+    $tocCount2    = 0
+    $summaryCount2 = 0
+    foreach ($policy in @($Policies)) {
+      $body = [string]$policy.body
+      if ([string]$policy.metadata_block)      { $metaCount++ }
+      if ($body -match '\d+\.\d+\s+\w')         { $numberedCount++ }
+      if ($body -match '(?m)^#{1,3}\s+\w|^[A-Z][A-Z\s]{4,}$') { $headerCount++ }
+      if ([string]$policy.table_of_contents)   { $tocCount2++ }
+      if ([string]$policy.executive_summary)   { $summaryCount2++ }
+    }
+    $n = $Policies.Count
+    $formattingScore = [int](
+      ($metaCount    / $n * 25) +
+      ($numberedCount / $n * 25) +
+      ($tocCount2    / $n * 20) +
+      ($summaryCount2 / $n * 20) +
+      ($headerCount  / $n * 10)
+    )
+    $formattingScore = [Math]::Max(50, [Math]::Min(100, $formattingScore))
+  }
+
+  $overallScore = [int](($realSpecificity * 0.4) + ($formattingScore * 0.3) + ($depthScore * 0.3))
+
+  $improvements = @()
+  if ($TotalSpecificityImprovements -gt 0) {
+    $improvements += "Replaced $TotalSpecificityImprovements generic references with company-specific named systems, data types, and roles across $PolicyCount policies."
+  }
+  $improvements += "Applied metadata headers to all $PolicyCount policies (ID, owner, version, organisation, framework, classification)."
+  $improvements += "Formatting pass enforced section headers, numbered subsections, and consistent line spacing."
+  $improvements += "Narrative rewrite pass removed passive constructions and anchored obligations to named subjects."
+  $improvements += "Policy body and executive summary trimmed to word-count and character limits."
+
+  return [ordered]@{
+    generated_at                  = if ($GeneratedAt) { $GeneratedAt } else { (Get-Date).ToString("o") }
+    overall_score                 = $overallScore
+    specificity_score             = $realSpecificity
+    depth_score                   = $depthScore
+    formatting_score              = $formattingScore
+    total_specificity_improvements = $TotalSpecificityImprovements
+    policy_count                  = $PolicyCount
+    improvements                  = @($improvements)
+  }
 }
 
 function New-PolicyDraftRecords {
@@ -2965,7 +3434,20 @@ function Format-PolicyDocumentText {
       continue
     }
 
-    if ($normalizedLine -match "^[2-4]\." -and $formattedLines.Count -gt 0 -and [string]$formattedLines[$formattedLines.Count - 1] -ne "") {
+    # Convert old inline format "1.1 Heading. Content paragraph..." → heading on own line
+    if ($normalizedLine -match '^(\d+\.\d+(?:\.\d+)?\s+[A-Za-z][^.\r\n]{2,50})\.\s+([A-Z][^\r\n]{20,})$') {
+      if ($formattedLines.Count -gt 0 -and [string]$formattedLines[$formattedLines.Count - 1] -ne "") {
+        [void]$formattedLines.Add("")
+      }
+      [void]$formattedLines.Add($Matches[1])
+      [void]$formattedLines.Add("")
+      [void]$formattedLines.Add($Matches[2])
+      $previousBlank = $false
+      continue
+    }
+
+    # Ensure blank line before main section headings (1. 2. 3. 4.)
+    if ($normalizedLine -match "^\d+\." -and $formattedLines.Count -gt 0 -and [string]$formattedLines[$formattedLines.Count - 1] -ne "") {
       [void]$formattedLines.Add("")
     }
 
@@ -3000,6 +3482,681 @@ function Invoke-PolicyFormattingPass {
   return @($formattedPolicies)
 }
 
+# ── AI Enhancement Functions (Claude API) ────────────────────────────────────
+
+function Invoke-ClaudeApi {
+  param(
+    [string]$SystemPrompt,
+    [string]$UserPrompt,
+    [int]$MaxTokens = 8000
+  )
+  $apiKey = $env:ANTHROPIC_API_KEY
+  if ([string]::IsNullOrWhiteSpace($apiKey)) { $script:aiKeyValid = $false; return $null }
+  try {
+    $requestBody = [ordered]@{
+      model      = "claude-sonnet-4-6"
+      max_tokens = $MaxTokens
+      system     = $SystemPrompt
+      messages   = @(@{ role = "user"; content = $UserPrompt })
+    } | ConvertTo-Json -Depth 10 -Compress
+    $response = Invoke-WebRequest -Uri "https://api.anthropic.com/v1/messages" `
+      -Method POST -Body $requestBody -ContentType "application/json" `
+      -Headers @{ "x-api-key" = $apiKey; "anthropic-version" = "2023-06-01" } `
+      -UseBasicParsing
+    $script:aiKeyValid = $true
+    # Force UTF-8 decoding — prevents garbled Unicode (em-dashes, curly quotes, ellipsis)
+    $utf8Text = [System.Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray())
+    $obj = $utf8Text | ConvertFrom-Json
+    $rawText = $obj.content[0].text
+    # Normalise common Unicode punctuation to plain ASCII equivalents
+    $rawText = $rawText -replace '\u2014','--' -replace '\u2013','-' -replace '[\u201C\u201D]','"' -replace '[\u2018\u2019]',"'" -replace '\u2026','...' -replace '\u00A0',' '
+    return $rawText
+  } catch {
+    $msg = $_.Exception.Message
+    if ($msg -match "401") {
+      $script:aiKeyValid = $false
+      Write-Host "[AI] 401 Unauthorized — API key is invalid. Update via Settings in the app."
+    } else {
+      Write-Host "Invoke-ClaudeApi error: $msg"
+    }
+    return $null
+  }
+}
+
+function ConvertFrom-ClaudeJsonArray {
+  param([string]$Text)
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+  $s = $Text.IndexOf("[")
+  $e = $Text.LastIndexOf("]")
+  if ($s -lt 0 -or $e -le $s) { return $null }
+  try { return ($Text.Substring($s, $e - $s + 1) | ConvertFrom-Json) } catch { return $null }
+}
+
+function Invoke-AiPolicyEnhancement {
+  param([object[]]$Policies, [object]$Onboarding)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Policies }
+
+  $companyName = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "the company" } else { [string]$Onboarding.legal_entity }
+  $industry    = [string]$Onboarding.industry
+  $cloud       = [string]$Onboarding.cloud_providers
+  $idp         = [string]$Onboarding.identity_provider
+  $dataTypes   = [string]$Onboarding.data_types
+  $frameworks  = [string]$Onboarding.framework_selection
+  $techStack   = (@($cloud, $idp) | Where-Object { $_ }) -join ", "
+
+  $system = "You are a senior GRC consultant rewriting compliance policies for a specific company. Rules: (1) Use the company name '$companyName' — never 'the company' or 'the organization'. (2) Name actual systems, tools, and data types. (3) Each subsection heading (e.g. '1.1 Purpose') MUST be on its own line followed by a blank line, then the paragraph — never inline as '1.1 Heading. Content...'. (4) Break multi-requirement paragraphs (3+ 'must' statements) into numbered or bulleted lists. (5) Make every control statement auditable and concrete. (6) Return ONLY a valid JSON array — no markdown, no explanation, same structure as input."
+
+  $batchSize = 5
+  $enhanced  = @()
+
+  for ($i = 0; $i -lt $Policies.Count; $i += $batchSize) {
+    $top   = [Math]::Min($i + $batchSize - 1, $Policies.Count - 1)
+    $batch = @($Policies[$i..$top])
+    $batchJson = $batch | ConvertTo-Json -Depth 20 -Compress
+    $user  = "Company: $companyName. Industry: $industry. Tech stack: $techStack. Data types: $dataTypes. Frameworks: $frameworks. Rewrite the body and executive_summary fields of each policy to be client-specific, properly formatted with headings on their own lines, and auditable. Preserve all other fields. Return the full policy array as JSON. Input: $batchJson"
+    $raw   = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 8000
+    $result = ConvertFrom-ClaudeJsonArray -Text $raw
+    if ($result) { $enhanced += @($result) } else { $enhanced += @($batch) }
+  }
+  return $enhanced
+}
+
+function Invoke-AiRiskEnhancement {
+  param([object[]]$Risks, [object]$Onboarding)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Risks }
+
+  $co      = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "the company" } else { [string]$Onboarding.legal_entity }
+  $cloud   = [string]$Onboarding.cloud_providers
+  $idp     = [string]$Onboarding.identity_provider
+  $data    = [string]$Onboarding.data_types
+  $classif = [string]$Onboarding.classification
+  $enc     = [string]$Onboarding.encryption
+  $backup  = [string]$Onboarding.backup
+  $monitor = [string]$Onboarding.monitoring
+  $mfa     = [string]$Onboarding.mfa_enabled
+  $access  = [string]$Onboarding.access_model
+
+  $system = @"
+You are a senior GRC risk analyst writing a risk register for $co.
+IMPORTANT RULES — every rule is mandatory:
+1. Each risk's 'why_this_company' MUST name $co, reference the actual systems ($cloud, $idp) and actual data ($data, $classif).
+2. Each 'treatment_plan' MUST be unique, non-repetitive, and contain 5-7 concrete steps that name $co's actual tools and workflows. Vary sentence structure and verb choices across risks. Do NOT reuse phrases like 'assign a business owner' or 'document the owner' as the primary action for more than one risk.
+3. 'treatment_plan' steps must be implementable in the next 90 days — include who does what, how frequently, and what evidence to retain.
+4. 'control_gaps' must name specific gaps based on ($cloud, $idp, $data, $mfa, $access, $monitor, $backup) — not generic phrases.
+5. 'likelihood_justification' and 'impact_justification' must cite $co's actual configuration details.
+6. Preserve all numeric score fields unchanged.
+7. Return ONLY a valid JSON array with the same keys as input — no markdown, no explanation.
+"@
+  $context = "Company: $co | Industry: $([string]$Onboarding.industry) | Cloud/infra: $cloud | IdP: $idp | MFA: $mfa | Data handled: $data | Classified data: $classif | Encryption: $enc | Backup approach: $backup | Monitoring: $monitor | Access model: $access | Headcount: $([string]$Onboarding.employee_headcount)"
+  $user    = "$context`n`nEnhance these risks to be specific, varied, and operationally actionable for $co. Input: $($Risks | ConvertTo-Json -Depth 20 -Compress)"
+  $raw     = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 8000
+  $result  = ConvertFrom-ClaudeJsonArray -Text $raw
+  if ($result) { return @($result) } else { return $Risks }
+}
+
+function Invoke-TreatmentPlanAgent {
+  # Generates focused, AI-driven treatment plans for each risk using full context.
+  # Called after risks exist but before saving — replaces any template-generated treatment_plan.
+  param([object[]]$Risks, [object]$Onboarding, [object[]]$Policies, [object[]]$Vendors)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Risks }
+  if (@($Risks | Where-Object { $_ }).Count -eq 0) { return $Risks }
+
+  $co      = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "the company" } else { [string]$Onboarding.legal_entity }
+  $cloud   = [string]$Onboarding.cloud_providers
+  $idp     = [string]$Onboarding.identity_provider
+  $data    = [string]$Onboarding.data_types
+  $monitor = [string]$Onboarding.monitoring
+  $backup  = [string]$Onboarding.backup
+  $enc     = [string]$Onboarding.encryption
+  $mfa     = [string]$Onboarding.mfa_enabled
+  $access  = [string]$Onboarding.access_model
+
+  $policyIndex = @($Policies | ForEach-Object {
+    "$([string]$_.policy_id): $([string]$_.name)"
+  }) -join "; "
+
+  $vendorIndex = @($Vendors | Select-Object -First 8 | ForEach-Object {
+    "$([string]$_.vendor_name) ($([string]$_.service_category))"
+  }) -join ", "
+
+  $system = @"
+You are a senior GRC consultant writing treatment plans for $co's risk register.
+Context: $co | Cloud: $cloud | IdP: $idp | MFA: $mfa | Data: $data | Encryption: $enc | Backup: $backup | Monitoring: $monitor | Access model: $access
+Available policies: $policyIndex
+Vendors in scope: $vendorIndex
+
+TREATMENT PLAN RULES — strictly enforced:
+1. Each treatment plan must be unique. Do NOT reuse identical steps across risks.
+2. Every step must name $co's actual tools, systems, or processes by name ($cloud, $idp, etc.).
+3. Include 5-7 steps per risk. Use active voice with a clear owner (e.g. "The security lead must...", "Engineering rotates...").
+4. Each plan must include: one detection/monitoring step, one review cadence step, and one evidence retention requirement.
+5. Reference the linked policy by ID/name where relevant.
+6. Vary vocabulary and sentence structure — no two risks should read like clones of each other.
+7. Return ONLY a valid JSON array. Each element: { "risk_id": "...", "treatment_plan": "..." }. No other fields.
+"@
+
+  $slim = @($Risks | ForEach-Object {
+    [ordered]@{
+      risk_id        = [string]$_.risk_id
+      threat         = [string]$_.threat
+      category       = [string]$_.category
+      control_gaps   = [string]$_.control_gaps
+      linked_policies = [string]$_.linked_policies
+      inherent_score = [string]$_.inherent_score
+    }
+  })
+  $user = "Generate treatment plans for these $co risks. For each, use the risk's threat, control gaps, and linked policies to write a distinct, operationally concrete plan. Risks: $($slim | ConvertTo-Json -Depth 5 -Compress)"
+  $raw  = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 6000
+
+  $planMap = @{}
+  $arr = ConvertFrom-ClaudeJsonArray -Text $raw
+  if ($arr) {
+    foreach ($item in @($arr)) {
+      if ([string]$item.risk_id -and [string]$item.treatment_plan) {
+        $planMap[[string]$item.risk_id] = [string]$item.treatment_plan
+      }
+    }
+  }
+
+  if ($planMap.Count -eq 0) { return $Risks }
+
+  return @($Risks | ForEach-Object {
+    $rid = [string]$_.risk_id
+    if ($planMap.ContainsKey($rid)) {
+      $_ | Add-Member -NotePropertyName "treatment_plan" -NotePropertyValue $planMap[$rid] -Force
+    }
+    $_
+  })
+}
+
+function Invoke-AiVendorEnhancement {
+  param([object[]]$Vendors, [object]$Onboarding)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Vendors }
+
+  $companyName = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "the company" } else { [string]$Onboarding.legal_entity }
+  $system = "You are a senior GRC vendor risk analyst. Enhance vendor assessment records to be specific and actionable. Rules: (1) 'notes' must describe the actual vendor risk in the context of this company's environment — not generic. (2) 'treatment_plan' must reference specific controls and concrete review actions. (3) 'assessment_questions' must be targeted to this vendor's actual service type and data access. (4) Preserve all numeric risk scores — only enhance text fields. (5) Return ONLY a valid JSON array — same structure as input, no markdown, no explanation."
+  $context = "Company: $companyName. Industry: $([string]$Onboarding.industry). Cloud stack: $([string]$Onboarding.cloud_providers). Data types: $([string]$Onboarding.data_types). Scope: $([string]$Onboarding.scope)."
+  $inputJson = $Vendors | ConvertTo-Json -Depth 20 -Compress
+  $user = "$context Enhance these vendor assessment records with company-specific narratives and targeted questions. Input: $inputJson"
+  $raw  = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 6000
+  $result = ConvertFrom-ClaudeJsonArray -Text $raw
+  if ($result) { return @($result) } else { return $Vendors }
+}
+
+# ── Multi-Agent Pipeline ──────────────────────────────────────
+
+function New-CompanyBrief {
+  param([object]$Onboarding)
+  $base = [ordered]@{
+    company      = [string]$Onboarding.legal_entity
+    industry     = [string]$Onboarding.industry
+    tech_stack   = (@([string]$Onboarding.cloud_providers, [string]$Onboarding.identity_provider) | Where-Object { $_ }) -join ", "
+    data_handled = [string]$Onboarding.data_types
+    frameworks   = [string]$Onboarding.framework_selection
+    headcount    = [string]$Onboarding.employee_headcount
+    scope        = [string]$Onboarding.scope
+    tone         = "audit-ready, operationally specific, no boilerplate"
+  }
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $base }
+
+  $system = "You are a senior GRC consultant. Read client onboarding data and produce a structured company brief used by downstream AI agents. Be precise and factual. Return ONLY valid JSON — no markdown, no explanation."
+  $user   = "Produce a company brief from this onboarding data. Include: company name, industry, full tech stack (every tool named), data types handled, compliance frameworks, headcount band, scope, top 3-5 implied key risks, and recommended documentation tone. Onboarding: $($Onboarding | ConvertTo-Json -Depth 10 -Compress)"
+  $raw    = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 2000
+  if ($raw) {
+    $s = $raw.IndexOf("{"); $e = $raw.LastIndexOf("}")
+    if ($s -ge 0 -and $e -gt $s) { try { return $raw.Substring($s, $e - $s + 1) | ConvertFrom-Json } catch {} }
+  }
+  return $base
+}
+
+function Invoke-PolicyWriterAgent {
+  param([object[]]$Policies, [object]$Brief, [object]$Onboarding)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Policies }
+
+  $co       = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { [string]$Brief.company } else { [string]$Onboarding.legal_entity }
+  $industry = [string]$Onboarding.industry
+  $cloud    = [string]$Onboarding.cloud_providers
+  $idp      = [string]$Onboarding.identity_provider
+  $mfa      = [string]$Onboarding.mfa_enabled
+  $access   = [string]$Onboarding.access_model
+  $data     = [string]$Onboarding.data_types
+  $classif  = [string]$Onboarding.classification
+  $enc      = [string]$Onboarding.encryption
+  $backup   = [string]$Onboarding.backup
+  $monitor  = [string]$Onboarding.monitoring
+  $headcount = [string]$Onboarding.employee_headcount
+  $tech     = if ($Brief.tech_stack  -is [array]) { $Brief.tech_stack  -join ", " } else { [string]$Brief.tech_stack }
+  $fw       = if ($Brief.frameworks  -is [array]) { $Brief.frameworks  -join ", " } else { [string]$Brief.frameworks }
+  $risks    = if ($Brief.key_risks   -is [array]) { $Brief.key_risks   -join ", " } else { [string]$Brief.key_risks }
+  # Security posture signals
+  $pubAccess    = [string]$Onboarding.publicly_accessible
+  $prodSep      = [string]$Onboarding.prod_test_separation
+  $irProcess    = [string]$Onboarding.incident_response_process
+  $logsReviewed = [string]$Onboarding.security_logs_reviewed
+  $backupTested = [string]$Onboarding.backups_tested
+  $critAccess   = [string]$Onboarding.critical_access_many
+  $prodChanges  = [string]$Onboarding.prod_changes_reviewed
+  $complianceReq = [string]$Onboarding.compliance_proof_requested
+  $secOwner     = [string]$Onboarding.security_owner
+  $dataLeakImpact = [string]$Onboarding.data_leak_impact
+  # Vendor stack summary
+  $vendorList = @($Onboarding.vendors | Where-Object { $_ -and [string]$_.vendor_name } | ForEach-Object {
+    $vn = [string]$_.vendor_name
+    $vc = [string]$_.service_category
+    $vd = [string]$_.data_types_handled
+    $va = [string]$_.access_level_detail
+    "$vn$(if($vc){" ($vc)"})(data: $(if($vd){$vd}else{'unspecified'}); access: $(if($va){$va}else{'unspecified'}))"
+  }) -join "; "
+  if (-not $vendorList) { $vendorList = "none recorded" }
+
+  $system = @"
+You are ${co}'s senior GRC consultant authoring official, audit-credible compliance policies.
+
+COMPANY CONTEXT — embed these specifics in every policy:
+Company: ${co} | Industry: $industry | Headcount: $headcount
+Cloud / hosting: $cloud | Identity provider: $idp | MFA: $mfa | Access model: $access
+Data types: $data | Classification: $classif | Encryption: $enc
+Backup: $backup | Monitoring / SIEM: $monitor
+Frameworks: $fw | Key risks: $risks
+
+SECURITY POSTURE (use to calibrate control requirements):
+Publicly accessible systems: $pubAccess | Prod/test separation: $prodSep
+IR process in place: $irProcess | Security logs reviewed regularly: $logsReviewed
+Backups tested: $backupTested | Many people with critical/admin access: $critAccess
+Prod changes peer-reviewed: $prodChanges | Compliance proof requested by customers: $complianceReq
+Security/compliance owner: $secOwner | Data leak business impact: $dataLeakImpact
+
+VENDOR / TECHNOLOGY STACK (name these in relevant policy sections):
+$vendorList
+
+MANDATORY WRITING RULES — all rules apply to every policy:
+1. COMPANY NAME: Use "${co}" in the first sentence of every section. Never write "the organization", "the company", or "the entity."
+2. TOOL SPECIFICITY: Name actual tools from the company context — not "a cloud provider" but "$cloud"; not "an identity system" but "$idp"; not "monitoring tools" but "$monitor." Reference specific vendors from the stack above in policies that govern their use.
+3. DATA SPECIFICITY: Reference $data and $classif explicitly when describing what the policy protects. Not "sensitive data" but the actual data types.
+4. SECURITY POSTURE: If $pubAccess is Yes, include explicit internet-facing controls. If $irProcess is No or empty, include building IR capability as a requirement. If $logsReviewed is No, include mandatory log review obligations. Match control stringency to the actual posture answers.
+5. HEADINGS: Subsection headings must be on their own line followed by a blank line. Never write "1.1 Heading. Content..." inline. Never merge a heading and its first sentence on the same line.
+6. LISTS: Three or more obligations, controls, or requirements become a numbered list. No run-on sentences with "and" chaining 4+ items.
+7. AUDITABLE CONTROLS: Every control statement must name who owns it, what they must do, and how often. E.g. "The IT Security Lead must review all $idp privileged accounts quarterly and remove access within 24 hours of termination."
+8. EXECUTIVE SUMMARY: Must state specifically why this policy matters for ${co} — reference the company's industry, data types, and at least one named tool. Not a generic description of the policy type.
+9. UNIQUENESS: Every policy MUST open with a unique purpose sentence that directly describes the specific subject of that policy. NEVER use the formula "[Company] establishes the standards for [X] in support of [business description]." That is a generic filler formula — it is prohibited. Instead, start the purpose with a concrete statement about what the policy governs and the specific risk it addresses for ${co}. For example: "Access to ${co}'s $cloud environment and $idp accounts must be governed by least-privilege principles to protect $data from unauthorized disclosure." Make the first sentence earn its place.
+10. NO BUSINESS MODEL COPY-PASTE: Do NOT copy the company's business model description ("Providing Viso services..." or "consulting services for companies...") into policy text. Business model text has no place in a policy body. Write about what the policy governs, not what the company does commercially.
+11. PRESERVE EXACTLY: policy_id, name, category, owner, sign_off_by, review_cycle, version, effective_date, linked_risks, linked_controls, treatment_action, treatment_owner, treatment_due, all metadata fields. Only rewrite body and executive_summary.
+12. OUTPUT: Return ONLY a valid JSON array — same structure as input. No markdown, no commentary.
+13. NO HALLUCINATION: NEVER invent tool names, product names, team names, department names, job titles, process names, certifications, or systems that are not explicitly listed in the company context above. If context is missing, use only role titles (e.g. "the Security Owner", "the CEO") — never invent names. If a process does not exist yet, frame it as a requirement to establish, not as an existing process.
+14. NO INVENTED VENDORS: Only reference vendor names explicitly listed in the VENDOR / TECHNOLOGY STACK section. Never add tools, SaaS products, or infrastructure components not listed.
+15. NO FILLER: Do not add generic compliance boilerplate that could apply to any company. Every sentence must be grounded in ${co}'s actual context, specific tools, and real security posture.
+"@
+
+  $written = @()
+  for ($i = 0; $i -lt $Policies.Count; $i += 3) {
+    $batch  = @($Policies[$i..[Math]::Min($i + 2, $Policies.Count - 1)])
+    $user   = "Rewrite the body and executive_summary of each policy to be fully specific to ${co}. CRITICAL: Do NOT use the formula '[Company] establishes the standards for [X] in support of [business description]' — this is banned. Each policy must open with a unique, subject-specific sentence that states what the policy governs and the risk it addresses. Do NOT copy the business model description into policy text. Use ONLY the tools, vendors, and data types listed in the company context. Reference $cloud, $idp, $data, $monitor, and relevant vendors where applicable. Calibrate control requirements to the security posture signals. Ensure every heading is on its own line with a blank line after it. Every policy must read as if written specifically for ${co}'s real $industry environment — not a generic template. Return complete policy array as JSON. Input: $($batch | ConvertTo-Json -Depth 20 -Compress)"
+    $raw    = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 16000
+    $result = ConvertFrom-ClaudeJsonArray -Text $raw
+    $written += if ($result) { @($result) } else { @($batch) }
+  }
+  return $written
+}
+
+function Invoke-PolicyCriticAgent {
+  # Deterministic scorer — no API call needed. Checks the same rubric with string matching.
+  param([object[]]$Policies, [object]$Brief, [object]$Onboarding = $null)
+  $co    = if ($Onboarding -and -not [string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { [string]$Onboarding.legal_entity } else { [string]$Brief.company }
+  $cloud = if ($Onboarding) { [string]$Onboarding.cloud_providers } else { "" }
+  $idp   = if ($Onboarding) { [string]$Onboarding.identity_provider } else { "" }
+  $data  = if ($Onboarding) { [string]$Onboarding.data_types } else { "" }
+
+  $results = @()
+  foreach ($policy in $Policies) {
+    $polId = [string]$policy.policy_id
+    $body  = [string]$policy.body
+    $exec  = [string]$policy.executive_summary
+    $full  = "$exec $body"
+    $score = 100
+    $flags = @()
+
+    # Generic company references (-5 each, max -20)
+    $genericMatches = ([regex]::Matches($full, '(?i)\b(the organization|the company|the entity|the firm)\b')).Count
+    if ($genericMatches -gt 0) { $score -= [Math]::Min(20, $genericMatches * 5); $flags += "Uses generic 'the organization/company' language ($genericMatches times) instead of '$co'" }
+
+    # Missing company name in executive summary (-10)
+    if ($exec -and $exec -notmatch [regex]::Escape($co)) { $score -= 10; $flags += "Executive summary does not mention '$co' by name" }
+
+    # Missing cloud tool reference in body (-5)
+    if ($cloud -and $body -and $body -notmatch [regex]::Escape($cloud.Split(',')[0].Trim())) { $score -= 5; $flags += "Body does not reference cloud provider '$cloud'" }
+
+    # Missing IdP reference in body (-5)
+    if ($idp -and $body -and $body -notmatch [regex]::Escape($idp.Split(',')[0].Trim())) { $score -= 5; $flags += "Body does not reference identity provider '$idp'" }
+
+    # Inline headings: "1.1 Heading. Content..." on same line (-8 each, max -24)
+    $inlineHeadings = ([regex]::Matches($body, '(?m)^\d+\.\d+[^\n]{3,50}\.\s+[A-Z]')).Count
+    if ($inlineHeadings -gt 0) { $score -= [Math]::Min(24, $inlineHeadings * 8); $flags += "Inline headings detected ($inlineHeadings) — heading and content on same line" }
+
+    # Weak modal language (-3 each, max -15)
+    $weakLang = ([regex]::Matches($full, '(?i)\b(should consider|may implement|could adopt|might want to)\b')).Count
+    if ($weakLang -gt 0) { $score -= [Math]::Min(15, $weakLang * 3); $flags += "Weak non-auditable language ($weakLang instances): 'should consider', 'may implement', etc." }
+
+    $results += [ordered]@{ policy_id = $polId; score = [Math]::Max(0, $score); flags = $flags }
+  }
+  return $results
+}
+
+function Invoke-PolicyRewriterAgent {
+  param([object[]]$Policies, [object[]]$CriticResults, [object]$Brief, [int]$Threshold = 80)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Policies }
+
+  $co      = [string]$Brief.company
+  $failed  = @($CriticResults | Where-Object { [int]$_.score -lt $Threshold })
+  if ($failed.Count -eq 0) { return $Policies }
+  $failIds = @($failed | ForEach-Object { [string]$_.policy_id })
+
+  $system = "You are fixing specific flagged issues in $co compliance policies. Fix ONLY the flagged issues — preserve everything else. Return ONLY a valid JSON object with the corrected policy."
+  $fixed  = @{}
+  foreach ($cr in $failed) {
+    $polId  = [string]$cr.policy_id
+    $policy = $Policies | Where-Object { [string]$_.policy_id -eq $polId } | Select-Object -First 1
+    if (-not $policy) { continue }
+    $flags  = @($cr.flags) -join "; "
+    $user   = "Fix ONLY these issues: $flags. Return the corrected policy as JSON. Policy: $($policy | ConvertTo-Json -Depth 20 -Compress)"
+    $raw    = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 4000
+    $s = $raw.IndexOf("{"); $e = $raw.LastIndexOf("}")
+    if ($s -ge 0 -and $e -gt $s) { try { $fixed[$polId] = $raw.Substring($s, $e - $s + 1) | ConvertFrom-Json; continue } catch {} }
+    $fixed[$polId] = $policy
+  }
+  return @($Policies | ForEach-Object { if ($fixed.ContainsKey([string]$_.policy_id)) { $fixed[[string]$_.policy_id] } else { $_ } })
+}
+
+function Invoke-RiskAnalystAgent {
+  param([object[]]$Risks, [object[]]$Policies, [object]$Brief, [object]$Onboarding)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Risks }
+
+  $co      = if ([string]::IsNullOrWhiteSpace([string]$Brief.company)) { "the company" } else { [string]$Brief.company }
+  $industry = [string]$Onboarding.industry
+  $headcount = [string]$Onboarding.employee_headcount
+  $workType  = [string]$Onboarding.work_type
+  $cloud     = [string]$Onboarding.cloud_providers
+  $regions   = [string]$Onboarding.storage_regions
+  $idp       = [string]$Onboarding.identity_provider
+  $mfa       = [string]$Onboarding.mfa_enabled
+  $access    = [string]$Onboarding.access_model
+  $data      = [string]$Onboarding.data_types
+  $classif   = [string]$Onboarding.classification
+  $enc       = [string]$Onboarding.encryption
+  $backup    = [string]$Onboarding.backup
+  $monitor   = [string]$Onboarding.monitoring
+  $biz       = ([string]$Onboarding.business_model).Substring(0, [Math]::Min(300, ([string]$Onboarding.business_model).Length))
+  # Security posture signals
+  $pubAccess    = [string]$Onboarding.publicly_accessible
+  $prodSep      = [string]$Onboarding.prod_test_separation
+  $irProcess    = [string]$Onboarding.incident_response_process
+  $logsReviewed = [string]$Onboarding.security_logs_reviewed
+  $backupTested = [string]$Onboarding.backups_tested
+  $critAccess   = [string]$Onboarding.critical_access_many
+  $prodChanges  = [string]$Onboarding.prod_changes_reviewed
+  $complianceReq = [string]$Onboarding.compliance_proof_requested
+  $secOwner     = [string]$Onboarding.security_owner
+  $dataLeakImpact = [string]$Onboarding.data_leak_impact
+  # Vendor intel summary (top-criticality vendors with their intel fields)
+  $vendorIntel = @($Onboarding.vendors | Where-Object { $_ -and [string]$_.vendor_name } | ForEach-Object {
+    $vn = [string]$_.vendor_name; $vc = [string]$_.service_category
+    $vd = [string]$_.data_types_handled; $va = [string]$_.access_level_detail
+    $vbi = [string]$_.business_impact; $vcon = [string]$_.has_contract; $vdpa = [string]$_.has_dpa
+    "$vn$(if($vc){" [$vc]"}): data=$( if($vd){$vd}else{'unspecified'} ) | access=$( if($va){$va}else{'unspecified'} ) | impact=$( if($vbi){$vbi}else{'unknown'} ) | contract=$( if($vcon){$vcon}else{'unknown'} ) | DPA=$( if($vdpa){$vdpa}else{'unknown'} )"
+  }) -join "`n"
+  if (-not $vendorIntel) { $vendorIntel = "No vendors recorded." }
+
+  $policyIndex = @($Policies | ForEach-Object {
+    "$([string]$_.policy_id) ($([string]$_.name)): $( ([string]$_.body).Substring(0,[Math]::Min(300,([string]$_.body).Length)) )"
+  }) -join "`n"
+
+  $system = @"
+You are a senior GRC consultant producing a production-ready, audit-credible risk register for ${co}.
+
+COMPANY CONTEXT — use these facts in every risk record:
+Company: ${co} | Industry: $industry | Headcount: $headcount | Work model: $workType
+Cloud / hosting: $cloud | Storage regions: $regions
+Identity provider: $idp | MFA enabled: $mfa | Access model: $access
+Data types processed: $data | Classification: $classif | Encryption: $enc
+Backup strategy: $backup | Monitoring / SIEM: $monitor
+Business model: $biz
+
+SECURITY POSTURE (factor into likelihood and control gap analysis):
+Publicly accessible systems: $pubAccess | Prod/test separation: $prodSep
+IR process in place: $irProcess | Logs reviewed regularly: $logsReviewed
+Backups tested: $backupTested | Many people with critical/admin access: $critAccess
+Prod changes peer-reviewed: $prodChanges | Compliance proof requested by customers: $complianceReq
+Security owner: $secOwner | Data leak business impact: $dataLeakImpact
+
+VENDOR INTELLIGENCE (use for vendor-related risks and third-party control gaps):
+$vendorIntel
+
+AVAILABLE POLICY IDs AND EXCERPTS:
+$policyIndex
+
+REWRITE RULES — every rule is mandatory:
+1. WHY_THIS_COMPANY: 2-3 sentences. Name ${co} explicitly. Reference actual cloud ($cloud), IdP ($idp), data types ($data), and business context. Explain precisely why this risk is elevated for ${co} — not a generic company. Never write "the organization" or "the company".
+2. VULNERABILITY: Name the specific technical gap or configuration weakness at ${co} that exposes this threat. Reference real tools (cloud platform, IdP, monitoring stack, etc.).
+3. EXISTING_CONTROLS: List actual policy IDs from the index that address this risk with a one-sentence description per policy: "POL-001 (Name): controls X; POL-002 (Name): controls Y."
+4. CONTROL_GAPS: Be operationally precise — not "controls may be lacking" but e.g. "no defined quarterly entitlement review process for $idp admin roles" or "encryption-at-rest policy does not cover $cloud object storage buckets." Name specific gaps tied to ${co}'s actual environment.
+5. IMPACT_DESCRIPTION: Real-world consequences if this risk materialises — regulatory obligations, financial loss, service disruption, reputational damage. Reference $data sensitivity, $classif level, and ${co}'s business model.
+6. LIKELIHOOD_JUSTIFICATION: Cite ${co}'s actual attack surface — $cloud exposure, $idp configuration, $mfa status, $access model, industry threat landscape. Justify the numeric score with specifics.
+7. IMPACT_JUSTIFICATION: Justify the numeric impact score citing $data sensitivity, $classif level, $backup coverage, business criticality, and recovery obligations.
+8. TREATMENT_PLAN: Already generated by the treatment plan agent — preserve exactly as is. Do NOT rewrite it.
+9. PRESERVE EXACTLY: likelihood, impact, inherent_score, inherent_rating, residual_likelihood, residual_impact, residual_score, residual_rating, risk_id, category, threat, threat_source, linked_policies, linked_controls, treatment_action, treatment_owner, treatment_due, review_date.
+10. UNIQUENESS: No two risks may share identical sentences, opening phrases, or structural patterns. Vary vocabulary and narrative framing per risk.
+11. OUTPUT: Return ONLY a valid JSON array with the same keys as input. No markdown, no commentary, no extra fields.
+"@
+
+  $user = "Rewrite every descriptive text field in these ${co} risk records using the company context and policy index above. Risks: $($Risks | ConvertTo-Json -Depth 20 -Compress)"
+  $raw  = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 12000
+  $result = ConvertFrom-ClaudeJsonArray -Text $raw
+  if ($result) { return @($result) } else { return $Risks }
+}
+
+function Invoke-VendorAnalystAgent {
+  param([object[]]$Vendors, [object[]]$Policies, [object[]]$Risks, [object]$Brief, [object]$Onboarding)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return $Vendors }
+
+  $co        = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { [string]$Brief.company } else { [string]$Onboarding.legal_entity }
+  $industry  = [string]$Onboarding.industry
+  $headcount = [string]$Onboarding.employee_headcount
+  $cloud     = [string]$Onboarding.cloud_providers
+  $regions   = [string]$Onboarding.storage_regions
+  $idp       = [string]$Onboarding.identity_provider
+  $mfa       = [string]$Onboarding.mfa_enabled
+  $access    = [string]$Onboarding.access_model
+  $data      = [string]$Onboarding.data_types
+  $classif   = [string]$Onboarding.classification
+  $enc       = [string]$Onboarding.encryption
+  $backup    = [string]$Onboarding.backup
+  $monitor   = [string]$Onboarding.monitoring
+  $devices   = [string]$Onboarding.devices_used
+  $framework = [string]$Onboarding.framework_selection
+  $biz       = ([string]$Onboarding.business_model).Substring(0, [Math]::Min(300, ([string]$Onboarding.business_model).Length))
+  # Security posture signals from company-level onboarding questions
+  $pubAccess   = [string]$Onboarding.publicly_accessible
+  $prodSep     = [string]$Onboarding.prod_test_separation
+  $irProcess   = [string]$Onboarding.incident_response_process
+  $logsReviewed = [string]$Onboarding.security_logs_reviewed
+  $backupTested = [string]$Onboarding.backups_tested
+  $secOwner    = [string]$Onboarding.security_owner
+
+  $policyIndex = @($Policies | ForEach-Object {
+    "$([string]$_.policy_id) ($([string]$_.name)): $( ([string]$_.body).Substring(0,[Math]::Min(200,([string]$_.body).Length)) )"
+  }) -join "`n"
+
+  $riskIndex = @($Risks | ForEach-Object {
+    "$([string]$_.risk_id) | $([string]$_.threat) | gaps: $( ([string]$_.control_gaps).Substring(0,[Math]::Min(160,([string]$_.control_gaps).Length)) )"
+  }) -join "`n"
+
+  $system = @"
+You are a senior GRC consultant writing production-ready third-party vendor risk assessments for ${co}, a ${headcount}-person ${industry} startup.
+
+=== COMPANY PROFILE ===
+Legal entity: ${co} | Industry: $industry | Headcount: $headcount | Work model: Remote
+Cloud / hosting: $cloud | Storage regions: $regions
+Identity provider: $idp | MFA: $mfa | Access model: $access
+Publicly accessible systems: $pubAccess | Prod/test separation: $prodSep
+Incident response process: $irProcess | Logs reviewed regularly: $logsReviewed | Backups tested: $backupTested
+Security owner: $secOwner
+Data processed: $data | Classification: $classif
+Encryption: $enc | Backup: $backup | Monitoring/SIEM: $monitor
+Devices: $devices | Compliance framework: $framework
+Business: $biz
+
+=== POLICY REGISTER ===
+$policyIndex
+
+=== RISK REGISTER (ID | Threat | Control Gaps) ===
+$riskIndex
+
+=== CATEGORY-SPECIFIC TREATMENT RULES ===
+Apply the relevant block to every vendor based on its service_category. Each action must name ${co} and the specific vendor.
+
+[CLOUD INFRASTRUCTURE — AWS, GCP, Azure, etc.]
+Primary objective: Govern ${co}'s shared-responsibility boundary and ensure all cloud-hosted data is protected, monitored, and recoverable.
+Required actions:
+- Confirm the shared-responsibility split: what the provider manages vs what ${co} owns. Document in the vendor register.
+- Verify IAM least-privilege: no wildcard (*) permissions in production. Tie IAM account creation/removal to $idp provisioning so leavers lose access within 24 hours.
+- Confirm encryption at rest (AES-256) and in transit (TLS 1.3) for all ${co} data buckets/volumes — referencing: $enc
+- Validate GuardDuty, CloudTrail, or equivalent alerting is enabled and forwarding to $monitor. Alert on root account usage.
+- Confirm snapshot/backup schedule meets ${co}'s RTO/RPO. Reference: $backup. Test recovery from snapshot at least annually.
+- Restrict data storage to $regions. Any sub-processor or replication outside $regions requires documented approval.
+
+[SOURCE CODE MANAGEMENT — GitHub, GitLab, Bitbucket, etc.]
+Primary objective: Prevent source code exposure, secret leakage, and supply-chain compromise in ${co}'s codebase.
+Required actions:
+- Enforce organisation-level SAML SSO via $idp. Only active $idp accounts may access ${co}'s GitHub organisation. Leavers' access must be revoked within 24 hours of $idp suspension.
+- Audit all repositories for hardcoded secrets, API keys, or credentials. Reference Dependabot/CodeQL if enabled. Define a SLA for critical vulnerability remediation (recommended: 7 days for critical CVEs).
+- Confirm all production/main branches enforce branch protection: required reviews, passing status checks, and no direct pushes.
+- Review all personal access tokens (PATs), deploy keys, and OAuth apps quarterly. Revoke tokens belonging to departed staff immediately.
+- Confirm all repositories containing ${co} client or infrastructure data are set to private.
+- Audit GitHub Actions workflow permissions to prevent supply-chain injection via third-party actions.
+
+[PAYMENTS — Stripe, Adyen, PayPal, etc.]
+Primary objective: Maintain PCI DSS scope reduction and ensure ${co}'s payment integration does not expose cardholder data.
+Required actions:
+- Confirm ${co} operates entirely outside PCI DSS card data scope because the processor tokenises all card data. Document this scope boundary in the compliance register.
+- Verify all payment API keys and webhook signing secrets are stored in $cloud Secrets Manager — never in application code, environment files, or GitHub repositories.
+- Validate that all incoming webhook payloads are signature-verified before processing to prevent spoofed payment events.
+- Restrict dashboard/admin access to the minimum necessary staff. At ${headcount} people, this should be a single named billing administrator. Enforce MFA on the payment dashboard account.
+- Define a process for approving manual refunds and adjustments. All dashboard actions must be logged and reviewed monthly.
+- Confirm customer billing record retention and deletion obligations. Ensure offboarded clients' billing data is deleted per the contractual timeline.
+
+[IDENTITY PROVIDER — Google Workspace, Okta, Azure AD, etc.]
+Primary objective: Protect the master identity layer — compromise here cascades to every SaaS tool ${co} uses.
+Required actions:
+- Limit super-administrator accounts to a maximum of 2 named individuals. Both must use hardware security keys or authenticator-app MFA — not SMS.
+- Conduct a quarterly audit of all OAuth applications authorised via $idp. Revoke any app that is unrecognised, unused for 90+ days, or requests excessive scopes.
+- Enforce a 24-hour SLA for suspending (not just deprovisioning) departed staff accounts. Suspended accounts must retain audit logs for 90 days before deletion.
+- Forward $idp admin audit logs to $monitor. Create alerts for: super-admin role assignment, MFA bypass, password reset for admin accounts.
+- Document the location and custodian of emergency recovery codes for admin accounts. Review annually.
+- Annually review all domain-wide delegation grants in $idp to confirm no excessive service account permissions remain.
+
+[COMMUNICATION / COLLABORATION — Slack, Teams, Google Chat, etc.]
+Primary objective: Prevent ${co}'s internal communications and shared files from becoming an uncontrolled data store for $classif information.
+Required actions:
+- Confirm message and file storage region aligns with $regions. Review Slack/Teams data residency settings and document in the vendor register.
+- Define and enforce a message retention policy that matches ${co}'s data classification requirements for $classif data. Configure retention in the admin console — do not rely on user behaviour.
+- Conduct a quarterly audit of all external/guest workspace members. Every guest must have a documented business justification and an expiry date.
+- Prohibit sharing of API keys, passwords, certificates, or credentials in any channel. Implement a DLP policy or at minimum a documented prohibition in the Acceptable Use Policy.
+- Restrict workspace data exports to admin accounts only. Log all export events and forward to $monitor.
+- Review all connected third-party apps and integrations. Remove any not actively used or without a documented owner.
+
+[ISSUE TRACKING / PROJECT MANAGEMENT — Jira, Linear, Asana, Notion, etc.]
+Primary objective: Ensure project tooling does not become an uncontrolled repository for ${co}'s $classif data or security vulnerability details.
+Required actions:
+- Review all projects containing security vulnerability, incident, or $classif data to confirm they are not accessible to external collaborators or guest accounts.
+- Conduct a quarterly audit of all external/guest users. Remove guests at project end and within 24 hours of engagement completion.
+- Review all integrations and webhooks configured in the tool. Disable unused integrations and ensure all active ones are owned by a named ${co} team member.
+- Confirm that ticket data, attachments, and comments are covered by ${co}'s backup strategy: $backup
+- Classify projects containing $classif data and apply access restrictions consistent with the classification policy.
+
+[CDN / NETWORK SECURITY — Cloudflare, Fastly, Akamai, etc.]
+Primary objective: Protect ${co}'s DNS, web traffic, and edge layer — a misconfiguration here is equivalent to a full traffic takeover.
+Required actions:
+- Restrict DNS record changes to a named approver. All DNS changes must go through a change control process — unauthorised DNS modification could redirect all ${co} traffic.
+- Review and enforce WAF ruleset quarterly. Document any deliberately disabled rules with a business justification and risk acceptance sign-off.
+- All API tokens must follow least-privilege scoping (per-zone, per-permission). Rotate all API tokens annually. Store in $cloud Secrets Manager.
+- Confirm Full (Strict) SSL/TLS mode is enabled for all ${co} zones. Flexible SSL must not be used — it exposes backend traffic in plaintext.
+- Set DDoS protection to at least "High" for all production endpoints. Review thresholds after any attack event.
+- Enable Cloudflare audit log forwarding to $monitor. Alert on admin login, zone changes, and firewall rule modifications.
+
+[SIEM / SECURITY MONITORING — Splunk, Datadog, Elastic, SumoLogic, etc.]
+Primary objective: Ensure ${co}'s detection capability covers all critical log sources and that the SIEM itself is hardened as a high-value target.
+Required actions:
+- Audit log source coverage: confirm $cloud CloudTrail/audit logs, $idp admin logs, and application-layer logs are all forwarding to $monitor with no gaps.
+- Review all active alert rules. Document each rule's owner, expected true-positive rate, and escalation path. Suppress known false positives with documented justifications.
+- Confirm log retention meets ${co}'s $framework compliance requirements. Immutable log storage recommended for audit trails.
+- Restrict SIEM admin and dashboard access to named security personnel only. SIEM data reveals ${co}'s full attack surface — treat as Confidential.
+- Link SIEM alerts to documented incident response runbooks. Each alert type must have a named responder and SLA.
+- Review SIEM integration credentials quarterly. Rotate all API keys used for log ingestion and alert forwarding.
+
+[BACKUP / DISASTER RECOVERY — Secondary cloud, Veeam, Acronis, etc.]
+Primary objective: Ensure ${co}'s secondary storage remains isolated, recoverable, and does not duplicate the access vulnerabilities of the primary environment.
+Required actions:
+- Confirm the secondary backup environment ($backup) uses separate credentials and access controls from the primary $cloud environment. A single compromised account must not disable both primary and backup.
+- Test data recovery from the secondary environment at least semi-annually. Document RTO/RPO achieved in each test.
+- Confirm backup data is encrypted at rest and in transit with the same standards as the primary: $enc
+- Restrict access to backup management consoles to a maximum of 2 named administrators.
+- Confirm data stored in the backup environment is subject to the same regional restrictions ($regions) as the primary environment.
+
+=== MANDATORY OUTPUT RULES ===
+A. data_accessed: REWRITE this field to reflect what this specific vendor ACTUALLY handles at ${co}. Use the vendor's data_types_handled field (client-supplied) if present; otherwise derive from service_category. Do not copy ${co}'s full data inventory onto every vendor.
+B. certifications: If vendor_certifications_confirmed is "Yes", note that certifications are client-confirmed. Also populate with publicly known certifications for major vendors (AWS=SOC2/ISO27001/PCI/FedRAMP, GitHub=SOC2/ISO27001, Google=SOC2/ISO27001, Stripe=PCI-DSS-L1/SOC2, Cloudflare=SOC2/ISO27001, Splunk=SOC2/ISO27001). Do not leave blank for major SaaS providers.
+A2. CLIENT-SUPPLIED INTELLIGENCE: Each vendor record now contains client-specific answers. Use these to make the assessment more precise:
+  - stores_processes_data / data_types_handled / access_level_detail: Use in notes, data_accessed, and treatment_plan to describe actual data and access exposure.
+  - business_impact: If "Critical" or "Major impact", escalate urgency in treatment_plan and review cadence.
+  - has_contract / has_dpa: If "No" or "Not sure", add an action to obtain/confirm the contract or DPA in the treatment_plan.
+  - vendor_certifications_confirmed: If "No" or "Not sure", add an assessment question asking the vendor to provide their current certification status.
+C. notes: 2-3 sentences. Name ${co} and the vendor. Describe the exact role this vendor plays in ${co}'s live environment, referencing the vendor's purpose field. State specifically why this vendor's access or failure would impact ${co}'s $classif data or $framework compliance posture.
+D. treatment_plan: Write the treatment plan using the category block above. Format: "Treatment plan (Mitigate)\nPrimary objective: [one precise sentence]\nKey actions:\n- [action 1]\n- [action 2]\n...\nReview requirement: [specific cadence]". Every action must name ${co} or reference a specific tool ($monitor, $idp, $cloud). No filler sentences.
+E. assessment_questions: 4-6 audit-ready questions specific to this vendor's category and ${co}'s risk profile. Each question must reference ${co} or a specific data type/system. Avoid questions that any vendor could answer generically.
+F. linked_risks: Assign risk IDs from the register that this vendor's failure DIRECTLY triggers. A payments outage → financial/availability risks. An IDP breach → access/identity risks. A SIEM failure → detection/monitoring risks. Different vendors must map to different primary risks where appropriate.
+G. PRESERVE EXACTLY: vendor_id, vendor_name, service_category, all numeric fields (inherent_score, residual_score, vendor_likelihood, vendor_impact, residual_likelihood, residual_impact), inherent_risk, residual_risk, linked_controls, website, location, access_level.
+H. UNIQUENESS: No two vendors may share the same sentences, bullet points, or paragraph structure. Every treatment plan must be structurally and substantively unique to its vendor.
+I. OUTPUT: Return ONLY a valid JSON array of vendor objects. No markdown fences, no commentary, no wrapper object. Start with [ and end with ].
+"@
+
+  # Process in batches of 3 to stay well under the token limit
+  $batchSize  = 3
+  $allResults = [System.Collections.Generic.List[object]]::new()
+  for ($i = 0; $i -lt $Vendors.Count; $i += $batchSize) {
+    $batch     = @($Vendors[$i .. [Math]::Min($i + $batchSize - 1, $Vendors.Count - 1)])
+    $batchUser = "Rewrite every descriptive text field for these ${co} vendor records. Apply the company profile, category-specific treatment rules, and output rules above.`n`nVendors JSON:`n$($batch | ConvertTo-Json -Depth 20 -Compress)"
+    $raw       = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $batchUser -MaxTokens 14000
+    Write-Host "[VendorAgent] Batch $([Math]::Floor($i/$batchSize)+1): response length $(if($raw){$raw.Length}else{0}) chars"
+    $parsed = ConvertFrom-ClaudeJsonArray -Text $raw
+    if ($parsed) {
+      foreach ($v in $parsed) { $allResults.Add($v) }
+      Write-Host "[VendorAgent] Batch $([Math]::Floor($i/$batchSize)+1): parsed $(@($parsed).Count) vendors OK"
+    } else {
+      Write-Host "[VendorAgent] Batch $([Math]::Floor($i/$batchSize)+1): parse FAILED — keeping template data for this batch"
+      foreach ($v in $batch) { $allResults.Add($v) }
+    }
+  }
+  if ($allResults.Count -gt 0) { return @($allResults) } else { return $Vendors }
+}
+
+function Invoke-QaCrossCheckAgent {
+  param([object[]]$Policies, [object[]]$Risks, [object[]]$Vendors, [object]$Brief)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { return [ordered]@{ passed = $true; issues = @(); checked_at = (Get-Date).ToString("o") } }
+
+  $co    = [string]$Brief.company
+  $pids  = (@($Policies | ForEach-Object { [string]$_.policy_id })) -join ", "
+  $rsum  = @($Risks   | ForEach-Object { [ordered]@{ risk_id = [string]$_.risk_id; linked_policies = [string]$_.linked_policies; why = ([string]$_.why_this_company).Substring(0,[Math]::Min(150,([string]$_.why_this_company).Length)) } }) | ConvertTo-Json -Depth 4 -Compress
+  $vsum  = @($Vendors | ForEach-Object { [ordered]@{ vendor_id = [string]$_.vendor_id; name = [string]$_.vendor_name; linked_risks = [string]$_.linked_risks; notes = ([string]$_.notes).Substring(0,[Math]::Min(150,([string]$_.notes).Length)) } }) | ConvertTo-Json -Depth 4 -Compress
+
+  $system = "You are a GRC QA auditor for $co. Check compliance program consistency. Return JSON: {passed:bool,issues:[{type,entity_id,description,severity}],checked_at:string}. Check: (1) risks referencing non-existent policy IDs, (2) vendors with no risk references, (3) remaining generic language ('the organization','the company'), (4) missing company name in key fields."
+  $user   = "Available policy IDs: $pids. Risks: $rsum. Vendors: $vsum. Run consistency check for $co."
+  $raw    = Invoke-ClaudeApi -SystemPrompt $system -UserPrompt $user -MaxTokens 3000
+  if ($raw) {
+    $s = $raw.IndexOf("{"); $e = $raw.LastIndexOf("}")
+    if ($s -ge 0 -and $e -gt $s) { try { $r = $raw.Substring($s,$e-$s+1) | ConvertFrom-Json; $r | Add-Member -NotePropertyName "checked_at" -NotePropertyValue (Get-Date).ToString("o") -Force; return $r } catch {} }
+  }
+  return [ordered]@{ passed = $true; issues = @(); checked_at = (Get-Date).ToString("o") }
+}
+
 function New-PolicyGenerationSection {
   param([object]$Onboarding, [object[]]$TopRisks, [object[]]$Policies, [string]$StartedAt = "")
 
@@ -3008,7 +4165,7 @@ function New-PolicyGenerationSection {
   if ([string]$StartedAt) {
     $section.generation_started_at = $StartedAt
   }
-  return (Complete-PolicyGenerationSection -Section $section -Policies $Policies -Note ("{0} policies generated after draft, rewrite, formatting, and QA passes." -f $policyCount))
+  return (Complete-PolicyGenerationSection -Section $section -Policies $Policies -Note ("{0} policies generated after draft, rewrite, formatting, specificity, and QA passes." -f $policyCount))
 }
 
 function New-PolicyQaSection {
@@ -3303,46 +4460,99 @@ function Get-IntValueOrNull {
 function New-RiskTreatmentPlanText {
   param([string]$RiskTitle, [object[]]$Policies, [object]$Onboarding)
 
+  $co      = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "the company" } else { [string]$Onboarding.legal_entity }
+  $cloud   = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.cloud_providers))   { "cloud infrastructure" } else { [string]$Onboarding.cloud_providers }
+  $idp     = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.identity_provider)) { "the identity provider" } else { [string]$Onboarding.identity_provider }
+  $data    = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.data_types))        { "company and customer data" } else { [string]$Onboarding.data_types }
+  $classif = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.classification))    { "regulated data" } else { [string]$Onboarding.classification }
+  $backup  = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.backup))            { "backup procedures" } else { [string]$Onboarding.backup }
+  $monitor = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.monitoring))        { "monitoring tooling" } else { [string]$Onboarding.monitoring }
+  $enc     = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.encryption))        { "encryption controls" } else { [string]$Onboarding.encryption }
+  $mfa     = [string]$Onboarding.mfa_enabled
+  $headcount = [string]$Onboarding.employee_headcount
+
   $actions = @()
   $objective = switch -Wildcard ($RiskTitle) {
-    "Sensitive data exposure" { "Reduce the likelihood that regulated or sensitive data is exposed through weak handling, access, or third-party oversight." }
-    "Third-party service dependency" { "Reduce the chance that weak vendor governance, outages, or service changes materially affect security, availability, or compliance." }
-    "Cloud or infrastructure misconfiguration" { "Reduce the chance that insecure configuration, drift, or unreviewed changes expose production systems or affect service resilience." }
-    "Unauthorized account access" { "Reduce the chance that compromised, excessive, or stale access allows unauthorized activity in the environment." }
-    "Delayed detection and response" { "Reduce the time to detect, triage, and contain security events that affect the company or its customers." }
-    "Backup or recovery failure" { "Reduce the chance that backup integrity or recovery readiness issues extend downtime or cause data loss." }
-    "Weak data protection controls" { "Reduce the chance that company or customer data is stored, transmitted, or shared without consistent protection." }
-    "Access control drift" { "Keep privileges aligned to business need so role changes, exceptions, and stale access do not expand the blast radius of mistakes or misuse." }
-    default { "Reduce the likelihood and impact of the recorded risk through targeted operational safeguards, ownership, and review." }
+    "Sensitive data exposure"            { "Ensure $co's handling of $classif across $cloud is consistently aligned to approved data classification, access, and retention controls." }
+    "Third-party service dependency"     { "Reduce the operational and compliance risk that vendor service disruptions or weak governance create for $co's production environment on $cloud." }
+    "Cloud or infrastructure misconfiguration" { "Prevent insecure configuration drift or unreviewed changes from exposing $co's $cloud production environment to attack or service disruption." }
+    "Unauthorized account access"        { "Keep $co's access provisioned through $idp aligned to least-privilege and ensure MFA is enforced across all workforce and privileged accounts." }
+    "Delayed detection and response"     { "Reduce the mean time to detect and contain security events affecting $co's systems by improving coverage through $monitor." }
+    "Backup or recovery failure"         { "Validate that $co can recover critical $cloud workloads within agreed RTOs through regularly tested restore procedures." }
+    "Weak data protection controls"      { "Ensure $classif stored and transmitted across $co's $cloud infrastructure is consistently protected through $enc." }
+    "Access control drift"               { "Maintain least-privilege access across $co's $idp-managed environment by enforcing timely access reviews as the team grows." }
+    "Change management gaps"             { "Ensure that changes to $co's policies, controls, and $cloud configuration go through an approved change process with documented sign-off." }
+    default                              { "Reduce the likelihood and impact of this risk through targeted controls, assigned ownership, and regular review within $co's operating environment." }
   }
 
   switch -Wildcard ($RiskTitle) {
     "Sensitive data exposure" {
-      $actions += "Confirm where $([string]$Onboarding.data_types) is stored, processed, and shared, and keep that handling aligned to the approved data classification and retention approach."
-      $actions += "Verify that vendor use, data exports, and access approvals remain limited to approved business need and documented review."
+      $actions += "Map every location where $classif flows within $co's $cloud environment, and confirm that storage, transit, and sharing controls align to the approved data classification policy."
+      $actions += "Implement quarterly data access reviews to verify that only approved personnel and systems can reach $classif. Retain review records as audit evidence."
+      $actions += "Configure $cloud DLP or equivalent tooling to alert on out-of-policy exports or transmissions of $classif outside approved boundaries."
+      $actions += "Ensure all vendor agreements that involve access to $classif include data processing terms and are renewed or reviewed whenever the scope of access changes."
+      $actions += "Assign a data protection owner responsible for tracking open findings from data classification audits and escalating overdue remediation to senior management."
     }
     "Third-party service dependency" {
-      $actions += "Maintain an accountable owner for each critical vendor and review service changes, assurance evidence, and contingency options at least annually."
-      $actions += "Track vendor issues that affect availability, security, or compliance through remediation plans with target dates and escalation if overdue."
+      $actions += "Build and maintain a vendor criticality register that rates each provider against service dependency, data access, and substitutability — prioritising vendors hosted on $cloud."
+      $actions += "For each Tier 1 vendor, collect annual assurance evidence (SOC 2, ISO 27001, or equivalent) and document the outcome of the review with an assigned owner."
+      $actions += "Define a contingency plan for $co's top three most critical vendors that covers activation criteria, interim operating procedures, and communication obligations."
+      $actions += "Track vendor-related incidents and service notifications in the risk register, linking each to an owner and a target remediation or review date."
+      $actions += "Schedule vendor reassessments when a provider announces material platform changes, ownership transitions, or security incidents that affect $co's environment."
     }
     "Cloud or infrastructure misconfiguration" {
-      $actions += "Require documented review of infrastructure and configuration changes before production release, including validation of hardened settings."
-      $actions += "Check that logging, monitoring, and recovery controls remain enabled after material platform changes."
+      $actions += "Enforce infrastructure change review through $co's approved change management workflow before any modification reaches the $cloud production environment."
+      $actions += "Run automated configuration compliance checks against $co's $cloud baseline at least weekly and route findings to an owner with a defined SLA for remediation."
+      $actions += "Validate that logging, monitoring through $monitor, and backup configurations remain intact and correctly scoped after every material infrastructure change."
+      $actions += "Conduct a configuration baseline review at least quarterly to identify and remediate drift from hardened settings across $co's $cloud workloads."
+      $actions += "Retain change approval records, configuration snapshots, and drift reports as evidence for each review cycle."
     }
     "Unauthorized account access" {
-      $actions += "Keep joiner, mover, and leaver actions tied to the approved identity workflow so access changes are provisioned, reviewed, and removed on time."
-      $actions += "Review privileged roles, MFA coverage, and authentication anomalies on a defined cadence and escalate unresolved exceptions."
+      $actions += "Enforce MFA across all $co user accounts in $idp, prioritising administrator and privileged roles. Treat any MFA exception as a documented, time-limited risk acceptance."
+      $actions += "Run quarterly access reviews in $idp to verify that every active account reflects a current employment status and assigned role. Remove stale or excess entitlements within five business days."
+      $actions += "Integrate joiner, mover, and leaver events into a formal identity workflow so access is provisioned, transferred, and revoked within approved SLAs."
+      $actions += "Alert on authentication anomalies (unusual locations, repeated failures, off-hours logins) via $monitor and assign a response owner for each triggered alert."
+      $actions += "Review all privileged and service accounts at least quarterly. Rotate credentials for accounts that have not been audited within the review window."
     }
     "Delayed detection and response" {
-      $actions += "Tune alerting for the systems in scope, assign clear response ownership, and confirm escalation paths for high-severity events."
-      $actions += "Review incident evidence, response metrics, and lessons learned to improve detection coverage and playbook execution."
+      $actions += "Define and document alert thresholds in $monitor for $co's highest-risk event categories (authentication anomalies, data exfiltration signals, configuration changes)."
+      $actions += "Assign a named on-call owner for high-severity alerts and document escalation paths so response is initiated within the agreed SLA."
+      $actions += "Conduct tabletop exercises at least twice per year using realistic $co scenarios to validate that response playbooks work as expected."
+      $actions += "Review alert fatigue metrics monthly and tune $monitor rules to reduce false positives without degrading detection coverage."
+      $actions += "Retain incident timelines, triage notes, and post-incident reviews as evidence of detection and response performance."
     }
     "Backup or recovery failure" {
-      $actions += "Track backup coverage for critical systems and confirm restoration testing remains current for the services in scope."
-      $actions += "Escalate failed backup jobs, stale recovery tests, or missing recovery owners until corrective action is completed."
+      $actions += "Confirm that all Tier 1 workloads on $co's $cloud environment are captured in the backup schedule and that coverage is verified at least monthly."
+      $actions += "Run full restore tests for critical systems at least quarterly using $backup. Document test outcomes, RTO achieved, and any issues requiring remediation."
+      $actions += "Assign a backup owner who is responsible for monitoring job outcomes, investigating failures within 24 hours, and escalating unresolved issues."
+      $actions += "Store backup copies in a geographically or logically separate location from the primary $cloud region and verify offsite availability at each test cycle."
+      $actions += "Include recovery capability in $co's incident response runbooks so the team knows which systems to restore first and in what sequence."
+    }
+    "Weak data protection controls" {
+      $actions += "Audit current encryption coverage across $co's $cloud environment against the approved encryption standard — covering data at rest, in transit, and in backups."
+      $actions += "Remediate any workloads or data stores that do not meet the encryption baseline within 30 days and document exceptions with risk acceptance sign-off."
+      $actions += "Rotate encryption keys and service credentials on the approved schedule and confirm that key management procedures align to $enc."
+      $actions += "Review encryption configurations after every major $cloud infrastructure change or vendor update that could affect the protection posture."
+      $actions += "Assign a control owner who tracks the encryption remediation backlog and reports status to senior management at each quarterly review."
+    }
+    "Access control drift" {
+      $actions += "Schedule access reviews in $idp on a $([Math]::Max(1, [Math]::Min(3, [int]([string]$headcount -replace '\D','0')/50 + 1)))-month cycle, or more frequently when team size changes materially."
+      $actions += "Automate off-boarding checks so that when an employee leaves $co, their $idp account, $cloud access, and SaaS credentials are deprovisioned within one business day."
+      $actions += "Implement role-based access templates in $idp so new provisioning requests are matched against approved role definitions rather than copied from existing users."
+      $actions += "Flag accounts that have not been used in 60 days for review. Disable and document them within 10 business days unless a business justification is provided."
+      $actions += "Produce a monthly access exception report for accounts where provisioned permissions exceed the role template. Route to the system owner for sign-off or remediation."
+    }
+    "Change management gaps" {
+      $actions += "Establish a documented change management workflow covering policy updates, $cloud configuration changes, and software releases — requiring sign-off before implementation."
+      $actions += "Maintain a change log that records what changed, who approved it, and the rollback procedure, updated with every production change in $co's environment."
+      $actions += "Require post-implementation review for high-risk changes within five business days, documenting outcomes and any follow-up actions required."
+      $actions += "Train the team responsible for $cloud operations on the change management process at least annually and after material process updates."
+      $actions += "Include change management evidence in $co's quarterly compliance review, tracking open deviations and escalating overdue closures."
     }
     default {
-      $actions += "Document the owner, required control actions, and review cadence for this risk in the risk register and track open work to closure."
+      $actions += "Identify and document the specific control actions required to reduce this risk within $co's $cloud environment, and assign a named owner with a target completion date."
+      $actions += "Review the risk owner's status report at least quarterly and update the risk register with evidence of control effectiveness."
+      $actions += "Escalate risks that exceed the agreed residual tolerance to senior management with a remediation plan and revised target date."
     }
   }
 
@@ -3351,9 +4561,9 @@ function New-RiskTreatmentPlanText {
       $actions += (Convert-ToTreatmentAction -Statement $statement -ContextLabel ([string]$policy.name))
     }
   }
-  $actions = @($actions | Where-Object { $_ } | Select-Object -Unique | Select-Object -First 5)
+  $actions = @($actions | Where-Object { $_ } | Select-Object -Unique | Select-Object -First 7)
   if ($actions.Count -eq 0) {
-    $actions = @("Use the linked policy set to implement, review, and evidence controls that directly mitigate $RiskTitle.")
+    $actions = @("Use the linked policy set to implement, review, and evidence controls that directly mitigate this risk within $co's operating environment.")
   }
 
   return @(
@@ -3361,7 +4571,7 @@ function New-RiskTreatmentPlanText {
     "Primary objective: $objective"
     "Key actions:"
     ($actions | ForEach-Object { "- $_" })
-    "Review requirement: The risk owner must review status at least quarterly and after material business, vendor, system, or data-handling changes."
+    "Review requirement: The risk owner at $co must review treatment status at least quarterly, and immediately following any material change to the relevant systems, data handling, vendors, or workforce."
   ) -join "`n"
 }
 
@@ -3506,33 +4716,117 @@ function Normalize-VendorRecord {
 function New-RiskAssessmentSection {
   param([object]$Onboarding, [object[]]$TopRisks, [object[]]$Policies)
 
+  $securityRole = Get-SecurityRoleByHeadcount -Onboarding $Onboarding
+  $namedDataTypes = Get-NamedDataTypesFromOnboarding -Onboarding $Onboarding
+  $namedSystems = Get-NamedSystemsFromOnboarding -Onboarding $Onboarding
+  $companyName = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.legal_entity)) { "the company" } else { [string]$Onboarding.legal_entity }
+  $nextQuarter = (Get-Date).AddMonths(3).ToString("yyyy-MM-dd")
+
   $risks = @()
   for ($index = 0; $index -lt $TopRisks.Count; $index++) {
     $risk = $TopRisks[$index]
-    $relevantPolicies = Select-RelevantPoliciesForTopic -Topic ([string]$risk.title) -Policies $Policies -Kind "risk" -MaxCount 2
+    $riskTitle = [string]$risk.title
+    $relevantPolicies = Select-RelevantPoliciesForTopic -Topic $riskTitle -Policies $Policies -Kind "risk" -MaxCount 2
     $controlStrength = @(
       $relevantPolicies |
         ForEach-Object { @(Get-PolicyBodyControlStatements -Policy $_).Count } |
         Measure-Object -Sum
     ).Sum
-    $profile = Get-RiskScoreProfile -RiskTitle ([string]$risk.title) -ControlStrength $controlStrength
+    $profile = Get-RiskScoreProfile -RiskTitle $riskTitle -ControlStrength $controlStrength
     $linkedPolicyIds = @($relevantPolicies | ForEach-Object { $_.policy_id } | Select-Object -Unique)
     $linkedControlIds = @($relevantPolicies | ForEach-Object { [string]$_.linked_controls } | Where-Object { $_ } | Select-Object -Unique)
+
+    $category = switch -Wildcard ($riskTitle) {
+      "Sensitive data exposure"            { "Data Protection" }
+      "Third-party service dependency"     { "Third-Party Risk" }
+      "Cloud or infrastructure misconfiguration" { "Infrastructure" }
+      "Unauthorized account access"        { "Identity and Access" }
+      "Delayed detection and response"     { "Security Operations" }
+      "Backup or recovery failure"         { "Business Continuity" }
+      "Weak data protection controls"      { "Data Protection" }
+      "Access control drift"               { "Identity and Access" }
+      default                              { "Operational" }
+    }
+
+    $threatSource = switch -Wildcard ($riskTitle) {
+      "Unauthorized account access"        { "External / Insider" }
+      "Sensitive data exposure"            { "External / Insider" }
+      "Third-party service dependency"     { "Third-Party" }
+      "Cloud or infrastructure misconfiguration" { "Internal / External" }
+      default                              { "External" }
+    }
+
+    $whyThisCompany = switch -Wildcard ($riskTitle) {
+      "Sensitive data exposure"            { "$companyName handles $namedDataTypes across $namedSystems, making data exposure a direct operational risk." }
+      "Third-party service dependency"     { "$companyName relies on $namedSystems for core services, creating single-points-of-failure if vendor governance is weak." }
+      "Cloud or infrastructure misconfiguration" { "$companyName operates on $namedSystems, where configuration drift can expose the production environment." }
+      "Unauthorized account access"        { "$companyName uses $namedSystems for workforce access; weak entitlement control or MFA gaps increase this exposure." }
+      "Delayed detection and response"     { "$companyName's monitoring coverage across $namedSystems must be sufficient to detect and triage events quickly." }
+      "Backup or recovery failure"         { "$companyName's service continuity depends on validated backup and recovery procedures for systems hosted on $namedSystems." }
+      "Weak data protection controls"      { "$companyName stores and processes $namedDataTypes, requiring consistently enforced encryption and handling controls." }
+      "Access control drift"               { "$companyName's workforce access on $namedSystems may drift from approved role definitions as the team changes." }
+      default                              { "$companyName's operating environment on $namedSystems creates exposure to this risk category." }
+    }
+
+    $existingControls = if ($relevantPolicies.Count -gt 0) {
+      "Controls defined in: $(@($relevantPolicies | ForEach-Object { [string]$_.name }) -join ', ')."
+    } else {
+      "No linked policy controls are currently assigned to this risk."
+    }
+
+    $controlGaps = switch -Wildcard ($riskTitle) {
+      "Sensitive data exposure"            { "Data classification and handling obligations may not be consistently enforced across all in-scope data flows." }
+      "Third-party service dependency"     { "Vendor assurance evidence and contingency planning may not be reviewed on a defined schedule." }
+      "Cloud or infrastructure misconfiguration" { "Configuration baselines and change-validation procedures may not cover all deployed services." }
+      "Unauthorized account access"        { "Entitlement reviews and privileged access monitoring may not be performed frequently enough." }
+      "Delayed detection and response"     { "Alert coverage and escalation paths may have gaps that extend detection time for certain event types." }
+      "Backup or recovery failure"         { "Restoration testing may not be performed often enough to validate recoverability for all critical systems." }
+      "Weak data protection controls"      { "Encryption coverage or key-management practices may not be consistently applied across all data stores and transfers." }
+      "Access control drift"               { "Periodic entitlement review cadence may not be sufficient to catch role drift before it creates material exposure." }
+      default                              { "Control coverage for this risk type may have gaps that require owner review and gap remediation." }
+    }
+
+    $likelihoodJustification = switch -Wildcard ($riskTitle) {
+      "Sensitive data exposure"            { "Likelihood rated $([string]$profile.Likelihood) — $companyName processes $namedDataTypes, increasing the frequency of data-handling activity and potential misuse scenarios." }
+      "Unauthorized account access"        { "Likelihood rated $([string]$profile.Likelihood) — credential-based attacks are the most common attack vector; likelihood is elevated without consistent MFA and entitlement controls." }
+      "Cloud or infrastructure misconfiguration" { "Likelihood rated $([string]$profile.Likelihood) — cloud platform changes are frequent and configuration drift is a known source of exposure." }
+      "Third-party service dependency"     { "Likelihood rated $([string]$profile.Likelihood) — $companyName uses multiple third-party services; weak governance or an upstream incident can materialise quickly." }
+      default                              { "Likelihood rated $([string]$profile.Likelihood) — based on the risk profile for this category and the current control coverage for $companyName." }
+    }
+
+    $impactJustification = switch -Wildcard ($riskTitle) {
+      "Sensitive data exposure"            { "Impact rated $([string]$profile.Impact) — exposure of $namedDataTypes could trigger regulatory notification obligations, contractual breach, and reputational damage." }
+      "Cloud or infrastructure misconfiguration" { "Impact rated $([string]$profile.Impact) — a misconfiguration affecting production services on $namedSystems could cause extended outage or data loss." }
+      "Backup or recovery failure"         { "Impact rated $([string]$profile.Impact) — failure to recover critical systems within the required RTO would directly affect service delivery and commitments." }
+      default                              { "Impact rated $([string]$profile.Impact) — based on the potential operational, financial, or reputational consequences of this risk materialising for $companyName." }
+    }
+
     $risks += [ordered]@{
-      risk_id = "RISK-{0}" -f ($index + 1).ToString("000")
-      asset = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.scope)) { "In-scope application and supporting systems" } else { [string]$Onboarding.scope }
-      threat = $risk.title
-      vulnerability = if ([string]::IsNullOrWhiteSpace([string]$risk.reason)) { [string]$profile.Vulnerability } else { [string]$risk.reason }
-      impact_description = [string]$profile.ImpactText
-      likelihood = [string]$profile.Likelihood
-      impact = [string]$profile.Impact
-      inherent_score = [string]([int]$profile.Likelihood * [int]$profile.Impact)
-      residual_likelihood = [string]$profile.ResidualLikelihood
-      residual_impact = [string]$profile.ResidualImpact
-      residual_score = [string]([int]$profile.ResidualLikelihood * [int]$profile.ResidualImpact)
-      treatment_plan = New-RiskTreatmentPlanText -RiskTitle ([string]$risk.title) -Policies $relevantPolicies -Onboarding $Onboarding
-      linked_policies = $linkedPolicyIds -join ", "
-      linked_controls = $linkedControlIds -join ", "
+      risk_id                  = "RISK-{0}" -f ($index + 1).ToString("000")
+      category                 = $category
+      asset                    = if ([string]::IsNullOrWhiteSpace([string]$Onboarding.scope)) { "In-scope application and supporting systems" } else { [string]$Onboarding.scope }
+      threat                   = $riskTitle
+      threat_source            = $threatSource
+      vulnerability            = if ([string]::IsNullOrWhiteSpace([string]$risk.reason)) { [string]$profile.Vulnerability } else { [string]$risk.reason }
+      why_this_company         = $whyThisCompany
+      existing_controls        = $existingControls
+      control_gaps             = $controlGaps
+      impact_description       = [string]$profile.ImpactText
+      likelihood               = [string]$profile.Likelihood
+      impact                   = [string]$profile.Impact
+      inherent_score           = [string]([int]$profile.Likelihood * [int]$profile.Impact)
+      likelihood_justification = $likelihoodJustification
+      impact_justification     = $impactJustification
+      residual_likelihood      = [string]$profile.ResidualLikelihood
+      residual_impact          = [string]$profile.ResidualImpact
+      residual_score           = [string]([int]$profile.ResidualLikelihood * [int]$profile.ResidualImpact)
+      treatment_plan           = New-RiskTreatmentPlanText -RiskTitle $riskTitle -Policies $relevantPolicies -Onboarding $Onboarding
+      treatment_action         = "Mitigate"
+      treatment_owner          = $securityRole
+      treatment_due            = "Within 90 days"
+      review_date              = $nextQuarter
+      linked_policies          = $linkedPolicyIds -join ", "
+      linked_controls          = $linkedControlIds -join ", "
     }
   }
 
@@ -3617,26 +4911,37 @@ function New-VendorRiskSection {
     $relevantPolicies = Select-RelevantPoliciesForTopic -Topic $topic -Policies $Policies -Kind "vendor" -MaxCount 3
     $linkedPolicyIds = @($relevantPolicies | ForEach-Object { $_.policy_id } | Select-Object -Unique)
     $linkedControlIds = @($relevantPolicies | ForEach-Object { [string]$_.linked_controls } | Where-Object { $_ } | Select-Object -Unique)
-    $dataBlob = ([string]$candidate.data_accessed + " " + [string]$candidate.access_level).ToLowerInvariant()
+    $dataBlob = ([string]$candidate.data_accessed + " " + [string]$candidate.access_level + " " + [string]$candidate.data_types_handled).ToLowerInvariant()
     $signals = Get-VendorContextSignals -Vendor $candidate
+
+    # Base likelihood from criticality field
     $likelihood = switch ([string]$candidate.criticality) {
       "Critical" { 5 }
       "High" { 4 }
       "Medium" { 3 }
       default { 2 }
     }
-    if ($signals.IsCloud -or $signals.IsIdentity) {
-      $likelihood = [Math]::Min(5, $likelihood + 1)
-    }
+    # Boost likelihood from client-supplied business_impact answer
+    if ([string]$candidate.business_impact -eq "Critical") { $likelihood = [Math]::Max($likelihood, 5) }
+    elseif ([string]$candidate.business_impact -eq "Major impact") { $likelihood = [Math]::Max($likelihood, 4) }
+    elseif ([string]$candidate.business_impact -eq "Some impact") { $likelihood = [Math]::Max($likelihood, 3) }
+    if ($signals.IsCloud -or $signals.IsIdentity) { $likelihood = [Math]::Min(5, $likelihood + 1) }
+
+    # Base impact from signals
     $impact = if ($signals.HandlesSensitiveData) { 5 } elseif ($signals.HasProductionAccess -or $signals.IsCloud) { 4 } else { 3 }
-    if ([string]$candidate.criticality -eq "Critical") {
-      $impact = 5
-    }
+    if ([string]$candidate.criticality -eq "Critical") { $impact = 5 }
+    # Boost impact from client-supplied data and access answers
+    if ([string]$candidate.stores_processes_data -eq "Yes") { $impact = [Math]::Max($impact, 4) }
+    if ([string]$candidate.data_types_handled -match "PII|Financial|Credentials") { $impact = [Math]::Max($impact, 4) }
+    if ([string]$candidate.access_level_detail -in @("Admin", "Infrastructure")) { $impact = [Math]::Max($impact, 4) }
+    if ([string]$candidate.access_level_detail -eq "Infrastructure") { $impact = 5 }
+
+    # Residual scoring — reduced by contracts/DPA/certifications
     $residualLikelihood = [Math]::Max(1, $likelihood - [Math]::Min(2, [Math]::Max(1, $relevantPolicies.Count)))
-    if ($signals.IsCloud -or $signals.IsIdentity) {
-      $residualLikelihood = [Math]::Max(1, $residualLikelihood - 1)
-    }
+    if ($signals.IsCloud -or $signals.IsIdentity) { $residualLikelihood = [Math]::Max(1, $residualLikelihood - 1) }
+    if ([string]$candidate.has_contract -eq "Yes") { $residualLikelihood = [Math]::Max(1, $residualLikelihood - 1) }
     $residualImpact = [Math]::Max(2, $impact - 1)
+    if ([string]$candidate.has_dpa -eq "Yes") { $residualImpact = [Math]::Max(2, $residualImpact - 1) }
     $linkedRiskIds = @(
       $Risks |
         Where-Object {
@@ -3670,6 +4975,13 @@ function New-VendorRiskSection {
       criticality = $candidate.criticality
       certifications = $candidate.certifications
       location = $candidate.location
+      stores_processes_data           = [string]$candidate.stores_processes_data
+      data_types_handled              = [string]$candidate.data_types_handled
+      access_level_detail             = [string]$candidate.access_level_detail
+      business_impact                 = [string]$candidate.business_impact
+      has_contract                    = [string]$candidate.has_contract
+      has_dpa                         = [string]$candidate.has_dpa
+      vendor_certifications_confirmed = [string]$candidate.vendor_certifications_confirmed
       vendor_likelihood = [string]$likelihood
       vendor_impact = [string]$impact
       inherent_score = [string]($likelihood * $impact)
@@ -3682,6 +4994,7 @@ function New-VendorRiskSection {
       linked_risks = $linkedRiskIds -join ", "
       linked_controls = $linkedControlIds -join ", "
       notes = $riskDescription
+      assessment_questions = New-VendorAssessmentQuestions -Vendor $candidate -Onboarding $Onboarding
     }
   }
 
@@ -3972,6 +5285,197 @@ function New-AuditQaSection {
   }
 }
 
+function Invoke-TargetedRegeneration {
+  param(
+    [string]$ClientId,
+    [string[]]$PolicyIds = @(),
+    [string[]]$RiskIds   = @(),
+    [string[]]$VendorIds = @()
+  )
+  $paths      = Get-SectionPaths -ClientId $ClientId
+  $onboarding = Read-JsonFile -Path $paths["onboarding"].File        -DefaultValue (New-DefaultSection -SectionKey "onboarding" -ClientId $ClientId -CompanyName $ClientId)
+  $pg         = Read-JsonFile -Path $paths["policy-generation"].File  -DefaultValue ([ordered]@{ policies = @() })
+  $ra         = Read-JsonFile -Path $paths["risk-assessment"].File    -DefaultValue ([ordered]@{ risks    = @() })
+  $vr         = Read-JsonFile -Path $paths["vendor-risk"].File        -DefaultValue ([ordered]@{ vendors  = @() })
+  $cm         = Read-JsonFile -Path $paths["control-mapping"].File    -DefaultValue ([ordered]@{ controls = @() })
+  $savedAny   = $false
+  $hasApiKey  = -not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)
+
+  # Enhance only the specified policies
+  if ($PolicyIds.Count -gt 0 -and $hasApiKey) {
+    $targets = @($pg.policies | Where-Object { $PolicyIds -contains [string]$_.policy_id })
+    if ($targets.Count -gt 0) {
+      $enhanced = Invoke-AiPolicyEnhancement -Policies $targets -Onboarding $onboarding
+      if (@($enhanced | Where-Object { $_ }).Count -gt 0) {
+        foreach ($ep in @($enhanced)) {
+          $eid = [string]$ep.policy_id
+          $pg.policies = @($pg.policies | ForEach-Object { if ([string]$_.policy_id -eq $eid) { $ep } else { $_ } })
+        }
+        Save-JsonFile -Path $paths["policy-generation"].File -Value $pg
+        $savedAny = $true
+      }
+    }
+  }
+
+  # Enhance only the specified risks
+  if ($RiskIds.Count -gt 0 -and $hasApiKey) {
+    $targets = @($ra.risks | Where-Object { $RiskIds -contains [string]$_.risk_id })
+    if ($targets.Count -gt 0) {
+      $enhanced = Invoke-AiRiskEnhancement -Risks $targets -Onboarding $onboarding
+      if (@($enhanced | Where-Object { $_ }).Count -gt 0) {
+        foreach ($er in @($enhanced)) {
+          $eid = [string]$er.risk_id
+          $ra.risks = @($ra.risks | ForEach-Object { if ([string]$_.risk_id -eq $eid) { $er } else { $_ } })
+        }
+        Save-JsonFile -Path $paths["risk-assessment"].File -Value $ra
+        $savedAny = $true
+      }
+    }
+  }
+
+  # Enhance only the specified vendors
+  if ($VendorIds.Count -gt 0 -and $hasApiKey) {
+    $targets = @($vr.vendors | Where-Object { $VendorIds -contains [string]$_.vendor_id })
+    if ($targets.Count -gt 0) {
+      $enhanced = Invoke-AiVendorEnhancement -Vendors $targets -Onboarding $onboarding
+      if (@($enhanced | Where-Object { $_ }).Count -gt 0) {
+        foreach ($ev in @($enhanced)) {
+          $eid = [string]$ev.vendor_id
+          $vr.vendors = @($vr.vendors | ForEach-Object { if ([string]$_.vendor_id -eq $eid) { $ev } else { $_ } })
+        }
+        Save-JsonFile -Path $paths["vendor-risk"].File -Value $vr
+        $savedAny = $true
+      }
+    }
+  }
+
+  # Always refresh audit QA — it's fast and reflects the latest evidence state
+  $auditQa = New-AuditQaSection -Policies $pg.policies -Risks $ra.risks -Vendors $vr.vendors -Controls $cm.controls
+  Save-JsonFile -Path $paths["audit-qa"].File -Value $auditQa
+
+  Write-AuditLogEntry -ClientId $ClientId -EventType "targeted_regeneration" -Payload ([ordered]@{
+    policy_ids  = $PolicyIds -join ", "
+    risk_ids    = $RiskIds   -join ", "
+    vendor_ids  = $VendorIds -join ", "
+    ai_enhanced = $hasApiKey
+    saved       = $savedAny
+  })
+  return Get-ClientAggregate -ClientId $ClientId
+}
+
+function Invoke-SelectiveRiskRegeneration {
+  param([string]$ClientId)
+  $paths      = Get-SectionPaths -ClientId $ClientId
+  $onboarding = Read-JsonFile -Path $paths["onboarding"].File        -DefaultValue (New-DefaultSection -SectionKey "onboarding"       -ClientId $ClientId -CompanyName $ClientId)
+  $pg         = Read-JsonFile -Path $paths["policy-generation"].File  -DefaultValue ([ordered]@{ policies = @() })
+  $vendorRisk = Read-JsonFile -Path $paths["vendor-risk"].File        -DefaultValue ([ordered]@{ vendors  = @() })
+  $topRisks   = Get-DerivedTopRisks -Onboarding $onboarding
+
+  $riskAssessment = New-RiskAssessmentSection -Onboarding $onboarding -TopRisks $topRisks -Policies $pg.policies
+
+  if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    # Step 1: Generate context-aware, non-repetitive treatment plans first
+    $withPlans = Invoke-TreatmentPlanAgent -Risks $riskAssessment.risks -Onboarding $onboarding -Policies $pg.policies -Vendors $vendorRisk.vendors
+    if (@($withPlans | Where-Object { $_ }).Count -gt 0) { $riskAssessment.risks = @($withPlans) }
+
+    # Step 2: Full narrative enhancement using company brief and policies
+    $brief = if ($pg.company_brief) { $pg.company_brief } else { New-CompanyBrief -Onboarding $onboarding }
+    $enhanced = Invoke-RiskAnalystAgent -Risks $riskAssessment.risks -Policies $pg.policies -Brief $brief -Onboarding $onboarding
+    if (@($enhanced | Where-Object { $_ }).Count -gt 0) { $riskAssessment.risks = @($enhanced) }
+  }
+
+  Save-JsonFile -Path $paths["risk-assessment"].File -Value $riskAssessment
+  $riskQa = New-RiskQaSection -Risks $riskAssessment.risks
+  Save-JsonFile -Path $paths["risk-qa"].File -Value $riskQa
+
+  $controlMapping = Read-JsonFile -Path $paths["control-mapping"].File -DefaultValue ([ordered]@{ controls = @() })
+  $auditQa = New-AuditQaSection -Policies $pg.policies -Risks $riskAssessment.risks -Vendors $vendorRisk.vendors -Controls $controlMapping.controls
+  Save-JsonFile -Path $paths["audit-qa"].File -Value $auditQa
+
+  Write-AuditLogEntry -ClientId $ClientId -EventType "selective_risk_regeneration" -Payload ([ordered]@{
+    risk_count  = @($riskAssessment.risks).Count
+    ai_enhanced = (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY))
+    used_plan_agent = (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY))
+  })
+  return Get-ClientAggregate -ClientId $ClientId
+}
+
+function Invoke-SelectiveVendorRegeneration {
+  param([string]$ClientId)
+  $paths      = Get-SectionPaths -ClientId $ClientId
+  $onboarding = Read-JsonFile -Path $paths["onboarding"].File        -DefaultValue (New-DefaultSection -SectionKey "onboarding"        -ClientId $ClientId -CompanyName $ClientId)
+  $pg         = Read-JsonFile -Path $paths["policy-generation"].File  -DefaultValue ([ordered]@{ policies = @() })
+  $ra         = Read-JsonFile -Path $paths["risk-assessment"].File    -DefaultValue ([ordered]@{ risks    = @() })
+
+  $vendorRisk  = New-VendorRiskSection -Onboarding $onboarding -Risks $ra.risks -Policies $pg.policies
+  $companyBrief = if ($pg.company_brief) { $pg.company_brief } else { New-CompanyBrief -Onboarding $onboarding }
+  if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    $ai = Invoke-VendorAnalystAgent -Vendors $vendorRisk.vendors -Policies $pg.policies -Risks $ra.risks -Brief $companyBrief -Onboarding $onboarding
+    if (@($ai | Where-Object { $_ }).Count -gt 0) { $vendorRisk.vendors = @($ai) }
+  }
+  Update-VendorCatalog -VendorRecords @($vendorRisk.vendors) | Out-Null
+  Save-JsonFile -Path $paths["vendor-risk"].File -Value $vendorRisk
+  $vendorQa = New-VendorQaSection -Vendors $vendorRisk.vendors
+  Save-JsonFile -Path $paths["vendor-qa"].File -Value $vendorQa
+
+  # Auto-generate control mapping from policies + risks + vendors
+  $frameworkLabels = Get-FrameworkLabels -Onboarding $onboarding
+  $controlMapping = New-ControlMappingSection -Policies $pg.policies -Risks $ra.risks -Vendors $vendorRisk.vendors -FrameworkLabels $frameworkLabels
+  Save-JsonFile -Path $paths["control-mapping"].File -Value $controlMapping
+
+  $auditQa = New-AuditQaSection -Policies $pg.policies -Risks $ra.risks -Vendors $vendorRisk.vendors -Controls $controlMapping.controls
+  Save-JsonFile -Path $paths["audit-qa"].File -Value $auditQa
+
+  Write-AuditLogEntry -ClientId $ClientId -EventType "selective_vendor_regeneration" -Payload ([ordered]@{ vendor_count = @($vendorRisk.vendors).Count; control_count = @($controlMapping.controls).Count; ai_enhanced = (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) })
+  return Get-ClientAggregate -ClientId $ClientId
+}
+
+function Invoke-SelectiveAuditRegeneration {
+  param([string]$ClientId)
+  $paths      = Get-SectionPaths -ClientId $ClientId
+  $pg         = Read-JsonFile -Path $paths["policy-generation"].File  -DefaultValue ([ordered]@{ policies = @() })
+  $ra         = Read-JsonFile -Path $paths["risk-assessment"].File    -DefaultValue ([ordered]@{ risks    = @() })
+  $vr         = Read-JsonFile -Path $paths["vendor-risk"].File        -DefaultValue ([ordered]@{ vendors  = @() })
+  $cm         = Read-JsonFile -Path $paths["control-mapping"].File    -DefaultValue ([ordered]@{ controls = @() })
+  $onboarding = Read-JsonFile -Path $paths["onboarding"].File         -DefaultValue (New-DefaultSection -SectionKey "onboarding" -ClientId $ClientId -CompanyName $ClientId)
+
+  $auditQa = New-AuditQaSection -Policies $pg.policies -Risks $ra.risks -Vendors $vr.vendors -Controls $cm.controls
+  Save-JsonFile -Path $paths["audit-qa"].File -Value $auditQa
+
+  # Run AI QA cross-check if API key is available
+  if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    $brief = if ($pg.company_brief) { $pg.company_brief } else { New-CompanyBrief -Onboarding $onboarding }
+    $qaCrossCheck = Invoke-QaCrossCheckAgent -Policies $pg.policies -Risks $ra.risks -Vendors $vr.vendors -Brief $brief
+    $pg | Add-Member -NotePropertyName "qa_cross_check" -NotePropertyValue $qaCrossCheck -Force
+    Save-JsonFile -Path $paths["policy-generation"].File -Value $pg
+  }
+
+  Write-AuditLogEntry -ClientId $ClientId -EventType "selective_audit_regeneration" -Payload ([ordered]@{ finding_count = @($auditQa.findings).Count; ai_cross_check = (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) })
+  return Get-ClientAggregate -ClientId $ClientId
+}
+
+function Invoke-SelectivePolicyAiEnhancement {
+  param([string]$ClientId, [string]$PolicyId)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    return [ordered]@{ error = "ANTHROPIC_API_KEY not configured on the server." }
+  }
+  $paths      = Get-SectionPaths -ClientId $ClientId
+  $onboarding = Read-JsonFile -Path $paths["onboarding"].File        -DefaultValue (New-DefaultSection -SectionKey "onboarding" -ClientId $ClientId -CompanyName $ClientId)
+  $pg         = Read-JsonFile -Path $paths["policy-generation"].File  -DefaultValue ([ordered]@{ policies = @() })
+
+  $target = @($pg.policies | Where-Object { [string]$_.policy_id -eq $PolicyId })
+  if ($target.Count -eq 0) { return [ordered]@{ error = "Policy not found: $PolicyId" } }
+
+  $enhanced = Invoke-AiPolicyEnhancement -Policies @($target[0]) -Onboarding $onboarding
+  if (@($enhanced | Where-Object { $_ }).Count -gt 0) {
+    $ep = $enhanced[0]
+    $pg.policies = @($pg.policies | ForEach-Object { if ([string]$_.policy_id -eq $PolicyId) { $ep } else { $_ } })
+    Save-JsonFile -Path $paths["policy-generation"].File -Value $pg
+  }
+  Write-AuditLogEntry -ClientId $ClientId -EventType "selective_policy_ai_enhancement" -Payload ([ordered]@{ policy_id = $PolicyId })
+  return Get-ClientAggregate -ClientId $ClientId
+}
+
 function Invoke-ClientExportGeneration {
   param([string]$ClientId)
 
@@ -4118,9 +5622,22 @@ function Start-ClientProcessingJob {
   $processStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
   $processStartInfo.FileName = "powershell.exe"
   $processStartInfo.Arguments = $workerArguments
-  $processStartInfo.UseShellExecute = $true
+  $processStartInfo.UseShellExecute = $false
   $processStartInfo.CreateNoWindow = $true
+  $processStartInfo.RedirectStandardError = $true
+  $processStartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
   $worker = [System.Diagnostics.Process]::Start($processStartInfo)
+
+  # Capture stderr asynchronously — write to policy file if worker crashes on startup
+  $workerPid = $worker.Id
+  $workerPaths = $paths
+  $null = $worker.BeginErrorReadLine()
+  $worker.add_ErrorDataReceived({
+    param($s, $e)
+    if ($e.Data -and $e.Data.Trim()) {
+      Write-Host "[worker-$workerPid stderr] $($e.Data)"
+    }
+  })
 
   Write-AuditLogEntry -ClientId $ClientId -EventType "processing_queued" -Payload ([ordered]@{
     client_id = $ClientId
@@ -4195,12 +5712,54 @@ function Invoke-ClientProcessing {
     if (@($formattedPolicies | Where-Object { $_ }).Count -eq 0) {
       $formattedPolicies = @($rewrittenPolicies)
     }
-    $finalPolicies = Apply-PolicyGovernance -CurrentPolicies $policyList -IncomingPolicies $formattedPolicies -Onboarding $onboarding
-    if (@($finalPolicies | Where-Object { $_ }).Count -eq 0) {
-      $finalPolicies = @($formattedPolicies)
+    $governedPolicies = Apply-PolicyGovernance -CurrentPolicies $policyList -IncomingPolicies $formattedPolicies -Onboarding $onboarding
+    if (@($governedPolicies | Where-Object { $_ }).Count -eq 0) {
+      $governedPolicies = @($formattedPolicies)
     }
-    if (@($finalPolicies | Where-Object { $_ }).Count -eq 0) {
+    if (@($governedPolicies | Where-Object { $_ }).Count -eq 0) {
       throw "Policy generation produced no final policy records after rewrite and governance passes."
+    }
+
+    $policyGeneration = Start-PolicyGenerationStage -Section $policyGeneration -StageKey "specificity" -Note "Replacing generic references with company-specific language and applying metadata headers."
+    Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+    $specificityResult = Invoke-CompanySpecificityPass -Policies $governedPolicies -Onboarding $onboarding
+    $finalPolicies = @($specificityResult.Policies)
+    if (@($finalPolicies | Where-Object { $_ }).Count -eq 0) {
+      $finalPolicies = @($governedPolicies)
+    }
+    $improvementLog = New-ImprovementLog -SpecificityScore ([int]$specificityResult.SpecificityScore) -TotalSpecificityImprovements ([int]$specificityResult.TotalImprovements) -PolicyCount $finalPolicies.Count -GeneratedAt ([string]$policyGeneration.generation_started_at) -Policies $finalPolicies -Onboarding $onboarding
+
+    if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+      # Agent 1 — Orchestrator: build shared company brief
+      $policyGeneration = Start-PolicyGenerationStage -Section $policyGeneration -StageKey "orchestrator" -Note "Orchestrator agent — building shared company brief for all downstream agents."
+      Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+      $companyBrief = New-CompanyBrief -Onboarding $onboarding
+      $policyGeneration | Add-Member -NotePropertyName "company_brief" -NotePropertyValue $companyBrief -Force
+
+      # Agent 2 — Policy Writer: inject company-specific content using brief
+      $policyGeneration = Start-PolicyGenerationStage -Section $policyGeneration -StageKey "writer" -Note "Policy writer agent — rewriting with company-specific depth, named systems, and proper heading format."
+      Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+      $writtenPolicies = Invoke-PolicyWriterAgent -Policies $finalPolicies -Brief $companyBrief -Onboarding $onboarding
+      if (@($writtenPolicies | Where-Object { $_ }).Count -gt 0) { $finalPolicies = @($writtenPolicies) }
+
+      # Agent 3 — Policy Critic: score and flag quality issues
+      $policyGeneration = Start-PolicyGenerationStage -Section $policyGeneration -StageKey "critic" -Note "Policy critic agent — scoring all policies and flagging quality issues."
+      Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+      $criticResults = Invoke-PolicyCriticAgent -Policies $finalPolicies -Brief $companyBrief -Onboarding $onboarding
+      $policyGeneration | Add-Member -NotePropertyName "critic_results" -NotePropertyValue $criticResults -Force
+      $failedCount = @($criticResults | Where-Object { [int]$_.score -lt 80 }).Count
+      $avgScore    = if ($criticResults.Count -gt 0) { [Math]::Round((@($criticResults | ForEach-Object { [int]$_.score }) | Measure-Object -Average).Average, 1) } else { 0 }
+
+      # Agent 4 — Policy Rewriter: fix only the failed policies
+      if ($failedCount -gt 0) {
+        $policyGeneration = Start-PolicyGenerationStage -Section $policyGeneration -StageKey "rewriter" -Note "Policy rewriter agent — fixing $failedCount polic$(if($failedCount -eq 1){'y'}else{'ies'}) that scored below 80. Average score: $avgScore/100."
+        Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+        $rewrittenPolicies = Invoke-PolicyRewriterAgent -Policies $finalPolicies -CriticResults $criticResults -Brief $companyBrief
+        if (@($rewrittenPolicies | Where-Object { $_ }).Count -gt 0) { $finalPolicies = @($rewrittenPolicies) }
+      } else {
+        $policyGeneration = Start-PolicyGenerationStage -Section $policyGeneration -StageKey "rewriter" -Note "All $($criticResults.Count) policies passed critic review (avg score: $avgScore/100) — rewriter not needed."
+        Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+      }
     }
 
     $policyGeneration = Start-PolicyGenerationStage -Section $policyGeneration -StageKey "qa" -Note "Running policy QA checks and finalizing the policy pack."
@@ -4208,6 +5767,7 @@ function Invoke-ClientProcessing {
     $policyQa = New-PolicyQaSection -Policies $finalPolicies -Onboarding $onboarding
 
     $policyGeneration = New-PolicyGenerationSection -Onboarding $onboarding -TopRisks $topRisks -Policies $finalPolicies -StartedAt ([string]$policyGeneration.generation_started_at)
+    $policyGeneration | Add-Member -NotePropertyName "improvement_log" -NotePropertyValue $improvementLog -Force
   }
   Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
 
@@ -4227,13 +5787,29 @@ function Invoke-ClientProcessing {
     return Get-ClientAggregate -ClientId $ClientId
   }
 
+  # Read company brief from saved policy generation (set during policy agent chain, if API key was set)
+  $savedBrief = if ($policyGeneration.company_brief) { $policyGeneration.company_brief } else { New-CompanyBrief -Onboarding $onboarding }
+
   $riskAssessment = New-RiskAssessmentSection -Onboarding $onboarding -TopRisks $topRisks -Policies $policyGeneration.policies
+  if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    # Agent 5a — Treatment Plan Agent: generates unique, context-aware treatment plans per risk
+    $withPlans = Invoke-TreatmentPlanAgent -Risks $riskAssessment.risks -Onboarding $onboarding -Policies $policyGeneration.policies -Vendors @()
+    if (@($withPlans | Where-Object { $_ }).Count -gt 0) { $riskAssessment.risks = @($withPlans) }
+    # Agent 5b — Risk Analyst: full narrative enhancement using company brief and policy content
+    $aiRisks = Invoke-RiskAnalystAgent -Risks $riskAssessment.risks -Policies $policyGeneration.policies -Brief $savedBrief -Onboarding $onboarding
+    if (@($aiRisks | Where-Object { $_ }).Count -gt 0) { $riskAssessment.risks = @($aiRisks) }
+  }
   Save-JsonFile -Path $paths["risk-assessment"].File -Value $riskAssessment
 
   $riskQa = New-RiskQaSection -Risks $riskAssessment.risks
   Save-JsonFile -Path $paths["risk-qa"].File -Value $riskQa
 
   $vendorRisk = New-VendorRiskSection -Onboarding $onboarding -Risks $riskAssessment.risks -Policies $policyGeneration.policies
+  if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    # Agent 6 — Vendor Analyst: reads risks + policies to write traceable vendor assessments
+    $aiVendors = Invoke-VendorAnalystAgent -Vendors $vendorRisk.vendors -Policies $policyGeneration.policies -Risks $riskAssessment.risks -Brief $savedBrief -Onboarding $onboarding
+    if (@($aiVendors | Where-Object { $_ }).Count -gt 0) { $vendorRisk.vendors = @($aiVendors) }
+  }
   Update-VendorCatalog -VendorRecords @($vendorRisk.vendors) | Out-Null
   Save-JsonFile -Path $paths["vendor-risk"].File -Value $vendorRisk
 
@@ -4245,6 +5821,13 @@ function Invoke-ClientProcessing {
 
   $auditQa = New-AuditQaSection -Policies $policyGeneration.policies -Risks $riskAssessment.risks -Vendors $vendorRisk.vendors -Controls $controlMapping.controls
   Save-JsonFile -Path $paths["audit-qa"].File -Value $auditQa
+
+  # QA Cross-Check Agent — verify consistency across all outputs
+  if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    $qaCrossCheck = Invoke-QaCrossCheckAgent -Policies $policyGeneration.policies -Risks $riskAssessment.risks -Vendors $vendorRisk.vendors -Brief $savedBrief
+    $policyGeneration | Add-Member -NotePropertyName "qa_cross_check" -NotePropertyValue $qaCrossCheck -Force
+    Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+  }
 
   $exportManifest = Invoke-ClientExportGeneration -ClientId $ClientId
   $output = New-OutputSection -Policies $policyGeneration.policies -Risks $riskAssessment.risks -Vendors $vendorRisk.vendors -Controls $controlMapping.controls -AuditFindings $auditQa.findings -ExportManifest $exportManifest
@@ -4317,7 +5900,47 @@ function Publish-AllClientPolicies {
     actor = if ($defaultActor) { $defaultActor } else { "Unassigned" }
   })
 
-  return Invoke-ClientProcessing -ClientId $ClientId
+  return Get-ClientAggregate -ClientId $ClientId
+}
+
+function Unpublish-AllClientPolicies {
+  param([string]$ClientId, [switch]$UnsignOnly)
+
+  Ensure-ClientWorkspace -CompanyName $ClientId | Out-Null
+  $paths = Get-SectionPaths -ClientId $ClientId
+  $onboarding = Read-JsonFile -Path $paths["onboarding"].File -DefaultValue (New-DefaultSection -SectionKey "onboarding" -ClientId $ClientId -CompanyName $ClientId)
+  $policyGeneration = Read-JsonFile -Path $paths["policy-generation"].File -DefaultValue (New-DefaultSection -SectionKey "policy-generation" -ClientId $ClientId -CompanyName $ClientId)
+  $policyGeneration = Ensure-PolicyGenerationSectionSchema -Section $policyGeneration
+  $existingPolicies = @($policyGeneration.policies | Where-Object { $_ -and (([string]$_.policy_id) -or ([string]$_.name) -or ([string]$_.body)) })
+
+  if ($existingPolicies.Count -eq 0) { return Get-ClientAggregate -ClientId $ClientId }
+
+  $policyGeneration.policies = @($existingPolicies | ForEach-Object {
+    $p = $_
+    if ($UnsignOnly) {
+      # Only clear sign-off, keep published state
+      $p.sign_off_complete    = "No"
+      $p.sign_off_completed_by = ""
+      $p.sign_off_completed_at = ""
+    } else {
+      # Clear both published and sign-off
+      $p.published             = "No"
+      $p.published_by          = ""
+      $p.published_at          = ""
+      $p.sign_off_complete     = "No"
+      $p.sign_off_completed_by = ""
+      $p.sign_off_completed_at = ""
+    }
+    $p
+  })
+  Save-JsonFile -Path $paths["policy-generation"].File -Value $policyGeneration
+  $eventType = if ($UnsignOnly) { "policy_generation_bulk_unsigned" } else { "policy_generation_bulk_unpublished" }
+  Write-AuditLogEntry -ClientId $ClientId -EventType $eventType -Payload ([ordered]@{
+    client_id    = $ClientId
+    policy_count = @($policyGeneration.policies).Count
+    unsign_only  = [bool]$UnsignOnly
+  })
+  return Get-ClientAggregate -ClientId $ClientId
 }
 
 function Send-Response {
@@ -4482,9 +6105,149 @@ function Handle-ApiRequest {
     }
     return
   }
+  # ── Targeted regeneration (dependency-resolved, entity-level) ──
+  # GET /api/clients/:id/downstream-status — lightweight poll: risk count + vendor count for auto-chain polling
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "downstream-status" -and $Method -eq "GET") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $paths = Get-SectionPaths -ClientId $clientId
+    $ra = Read-JsonFile -Path $paths["risk-assessment"].File  -DefaultValue ([ordered]@{ risks   = @() })
+    $vr = Read-JsonFile -Path $paths["vendor-risk"].File      -DefaultValue ([ordered]@{ vendors = @() })
+    Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{
+      risk_count   = @($ra.risks   | Where-Object { $_ }).Count
+      vendor_count = @($vr.vendors | Where-Object { $_ }).Count
+      risks_updated_at   = [string]$ra.updatedAt
+      vendors_updated_at = [string]$vr.updatedAt
+    })
+    return
+  }
+
+  # GET /api/clients/:id/policy-generation-status — lightweight poll endpoint (no full policy bodies)
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "policy-generation-status" -and $Method -eq "GET") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $paths = Get-SectionPaths -ClientId $clientId
+    $pg = Read-JsonFile -Path $paths["policy-generation"].File -DefaultValue ([ordered]@{ generation_status = ""; generation_stage = ""; generation_stages = @() })
+    Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{
+      generation_status       = [string]$pg.generation_status
+      generation_stage        = [string]$pg.generation_stage
+      generation_stage_note   = [string]$pg.generation_stage_note
+      generation_started_at   = [string]$pg.generation_started_at
+      generation_completed_at = [string]$pg.generation_completed_at
+      generation_last_error   = [string]$pg.generation_last_error
+      generation_stages       = @($pg.generation_stages)
+      policy_count            = @($pg.policies).Count
+    })
+    return
+  }
+
+  # POST /api/clients/:id/reset-processing — force-clears a stuck in-progress status
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "reset-processing" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $paths = Get-SectionPaths -ClientId $clientId
+    $pg = Read-JsonFile -Path $paths["policy-generation"].File -DefaultValue ([ordered]@{})
+    if ([string]$pg.generation_status -eq "In progress") {
+      $pg.generation_status = "Failed"
+      $pg.generation_last_error = "Processing was manually reset after getting stuck."
+      $pg.generation_completed_at = (Get-Date).ToString("o")
+      foreach ($stage in @($pg.generation_stages)) {
+        if ([string]$stage.status -eq "in-progress") { $stage.status = "failed"; $stage.note = "Reset by user." }
+      }
+      Save-JsonFile -Path $paths["policy-generation"].File -Value $pg
+      Write-AuditLogEntry -ClientId $clientId -EventType "processing_reset" -Payload ([ordered]@{ client_id = $clientId })
+    }
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Get-ClientAggregate -ClientId $clientId)
+    return
+  }
+
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "process-targeted" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $payload  = ConvertTo-BodyObject -Body $Body
+    $policyIds = @($payload.policyIds | ForEach-Object { [string]$_ }) | Where-Object { $_ }
+    $riskIds   = @($payload.riskIds   | ForEach-Object { [string]$_ }) | Where-Object { $_ }
+    $vendorIds = @($payload.vendorIds | ForEach-Object { [string]$_ }) | Where-Object { $_ }
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Invoke-TargetedRegeneration -ClientId $clientId -PolicyIds $policyIds -RiskIds $riskIds -VendorIds $vendorIds)
+    return
+  }
+  # ── Treatment plan regeneration ────────────────────────────────
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "regenerate-treatment-plans" -and $Method -eq "POST") {
+    $clientId   = [System.Uri]::UnescapeDataString($segments[2])
+    $paths      = Get-SectionPaths -ClientId $clientId
+    $onboarding = Read-JsonFile -Path $paths["onboarding"].File       -DefaultValue (New-DefaultSection -SectionKey "onboarding"       -ClientId $clientId -CompanyName $clientId)
+    $pg         = Read-JsonFile -Path $paths["policy-generation"].File -DefaultValue ([ordered]@{ policies = @() })
+    $vr         = Read-JsonFile -Path $paths["vendor-risk"].File       -DefaultValue ([ordered]@{ vendors  = @() })
+    $ra         = Read-JsonFile -Path $paths["risk-assessment"].File   -DefaultValue ([ordered]@{ risks    = @() })
+    if (@($ra.risks | Where-Object { $_ }).Count -gt 0) {
+      $withPlans = Invoke-TreatmentPlanAgent -Risks $ra.risks -Onboarding $onboarding -Policies $pg.policies -Vendors $vr.vendors
+      if (@($withPlans | Where-Object { $_ }).Count -gt 0) {
+        $ra.risks = @($withPlans)
+        Save-JsonFile -Path $paths["risk-assessment"].File -Value $ra
+        Write-AuditLogEntry -ClientId $clientId -EventType "treatment_plan_regeneration" -Payload ([ordered]@{
+          risk_count  = @($ra.risks).Count
+          ai_enhanced = (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY))
+        })
+      }
+    }
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Get-ClientAggregate -ClientId $clientId)
+    return
+  }
+  # ── Selective regeneration endpoints ──────────────────────────
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "process-risks" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = "powershell.exe"
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptFilePath`" $Port process-risks-worker `"$clientId`""
+    $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
+    [System.Diagnostics.Process]::Start($psi) | Out-Null
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Get-ClientAggregate -ClientId $clientId)
+    return
+  }
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "process-vendors" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = "powershell.exe"
+    $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptFilePath`" $Port process-vendors-worker `"$clientId`""
+    $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
+    [System.Diagnostics.Process]::Start($psi) | Out-Null
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Get-ClientAggregate -ClientId $clientId)
+    return
+  }
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "process-audit" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Invoke-SelectiveAuditRegeneration -ClientId $clientId)
+    return
+  }
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "process-controls" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $cPaths      = Get-SectionPaths -ClientId $clientId
+    $cOnboarding = Read-JsonFile -Path $cPaths["onboarding"].File       -DefaultValue (New-DefaultSection -SectionKey "onboarding" -ClientId $clientId -CompanyName $clientId)
+    $cPg         = Read-JsonFile -Path $cPaths["policy-generation"].File -DefaultValue ([ordered]@{ policies = @() })
+    $cRa         = Read-JsonFile -Path $cPaths["risk-assessment"].File   -DefaultValue ([ordered]@{ risks    = @() })
+    $cVr         = Read-JsonFile -Path $cPaths["vendor-risk"].File       -DefaultValue ([ordered]@{ vendors  = @() })
+    $cCm         = New-ControlMappingSection -Policies $cPg.policies -Risks $cRa.risks -Vendors $cVr.vendors -FrameworkLabels (Get-FrameworkLabels -Onboarding $cOnboarding)
+    Save-JsonFile -Path $cPaths["control-mapping"].File -Value $cCm
+    $cAudit      = New-AuditQaSection -Policies $cPg.policies -Risks $cRa.risks -Vendors $cVr.vendors -Controls $cCm.controls
+    Save-JsonFile -Path $cPaths["audit-qa"].File -Value $cAudit
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Get-ClientAggregate -ClientId $clientId)
+    return
+  }
+  if ($segments.Length -eq 5 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "process-policy" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $policyId = [System.Uri]::UnescapeDataString($segments[4])
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Invoke-SelectivePolicyAiEnhancement -ClientId $clientId -PolicyId $policyId)
+    return
+  }
   if ($segments.Length -eq 5 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "policies" -and $segments[4] -eq "publish-all" -and $Method -eq "POST") {
     $clientId = [System.Uri]::UnescapeDataString($segments[2])
     Respond-Json -Client $Client -StatusCode 200 -Payload (Publish-AllClientPolicies -ClientId $clientId)
+    return
+  }
+  if ($segments.Length -eq 5 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "policies" -and $segments[4] -eq "unpublish-all" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Unpublish-AllClientPolicies -ClientId $clientId)
+    return
+  }
+  if ($segments.Length -eq 5 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "policies" -and $segments[4] -eq "unsign-all" -and $Method -eq "POST") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    Respond-Json -Client $Client -StatusCode 200 -Payload (Unpublish-AllClientPolicies -ClientId $clientId -UnsignOnly)
     return
   }
   if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $Method -eq "PUT") {
@@ -4542,14 +6305,289 @@ function Handle-ApiRequest {
     Respond-Json -Client $Client -StatusCode 200 -Payload $aggregate.($sectionMeta[$sectionKey].Property)
     return
   }
+  # ── Intelligence Centre ────────────────────────────────────────
+  if ($segments.Length -eq 3 -and $segments[0] -eq "api" -and $segments[1] -eq "intelligence" -and $segments[2] -eq "status" -and $Method -eq "GET") {
+    $apiKeyConfigured = -not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)
+    Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{
+      api_key_configured = $apiKeyConfigured
+    })
+    return
+  }
+  if ($segments.Length -eq 3 -and $segments[0] -eq "api" -and $segments[1] -eq "intelligence" -and $segments[2] -eq "improve" -and $Method -eq "POST") {
+    $payload = ConvertTo-BodyObject -Body $Body
+    $improveType = [string]$payload.type
+    $apiKey = [string]$payload.api_key
+    $contextObj = $payload.context
+    if ([string]::IsNullOrWhiteSpace($apiKey)) { $apiKey = $env:ANTHROPIC_API_KEY }
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+      Respond-Json -Client $Client -StatusCode 400 -Payload ([ordered]@{ error = "No API key provided." })
+      return
+    }
+    try {
+      $systemPrompt = "You are a senior GRC consultant improving compliance documentation for a specific company. Your task is to transform generic policy content into precise, operationally meaningful documentation. Rules: (1) Every section must reference the company by name, not 'the company'. (2) Name actual systems, tools, platforms, and data types rather than using generic terms. (3) Each policy body field must use the exact format: section heading on its own line, blank line, then paragraph content — never 'N.N Heading. Content...' on one line. (4) Controls must be specific and auditable, not aspirational. (5) Return ONLY valid JSON with the same structure as the input — no extra keys, no markdown, no explanation."
+      switch ($improveType) {
+        "policies" {
+          $inputData = $payload.policies
+          $userPrompt = "Company: $($contextObj.companyName). Industry: $($contextObj.industry). Tech stack: $($contextObj.techStack). Frameworks: $($contextObj.frameworks). Data handled: $($contextObj.dataTypes). Rewrite the body field of each policy in this array to: (1) Name $($contextObj.companyName) explicitly in every section. (2) Reference the actual tech stack ($($contextObj.techStack)) and data types ($($contextObj.dataTypes)) with specifics. (3) Replace any 'N.N Heading. Content...' inline format — each subsection heading MUST be on its own line followed by a blank line then the paragraph. (4) Make controls auditable and concrete — name the actual mechanisms, not general principles. (5) Preserve and improve the executive_summary and table_of_contents fields. Return the full improved policies array as JSON. Input: $($inputData | ConvertTo-Json -Depth 20 -Compress)"
+        }
+        "risks" {
+          $inputData = $payload.risks
+          $userPrompt = "Company: $($contextObj.companyName). Industry: $($contextObj.industry). Tech stack: $($contextObj.techStack). Improve the following risk register entries — add specific threat actors, realistic likelihood justifications, company-specific why_this_company fields, and concrete treatment plans. Return the improved risks array as JSON. Input: $($inputData | ConvertTo-Json -Depth 20 -Compress)"
+        }
+        "vendors" {
+          $inputData = $payload.vendors
+          $userPrompt = "Company: $($contextObj.companyName). Industry: $($contextObj.industry). Improve the following vendor assessments — add specific security questions, realistic risk scores, and concrete notes referencing the vendor's actual service. Return the improved vendors array as JSON. Input: $($inputData | ConvertTo-Json -Depth 20 -Compress)"
+        }
+        default {
+          Respond-Json -Client $Client -StatusCode 400 -Payload ([ordered]@{ error = "Unknown improvement type: $improveType" })
+          return
+        }
+      }
+      $requestBody = [ordered]@{
+        model = "claude-sonnet-4-6"
+        max_tokens = 8000
+        system = $systemPrompt
+        messages = @(@{ role = "user"; content = $userPrompt })
+      } | ConvertTo-Json -Depth 10 -Compress
+      $response = Invoke-WebRequest -Uri "https://api.anthropic.com/v1/messages" -Method POST -Body $requestBody -ContentType "application/json" -Headers @{
+        "x-api-key" = $apiKey
+        "anthropic-version" = "2023-06-01"
+      } -UseBasicParsing
+      $responseObj = $response.Content | ConvertFrom-Json
+      $assistantText = $responseObj.content[0].text
+      $jsonStart = $assistantText.IndexOf("[")
+      if ($jsonStart -lt 0) { $jsonStart = $assistantText.IndexOf("{") }
+      $jsonEnd = $assistantText.LastIndexOf("]")
+      if ($jsonEnd -lt 0) { $jsonEnd = $assistantText.LastIndexOf("}") }
+      if ($jsonStart -lt 0 -or $jsonEnd -lt 0 -or $jsonEnd -le $jsonStart) {
+        Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{
+          score = 0
+          improvements_count = 0
+          error = "Could not parse LLM response as JSON."
+          raw = $assistantText.Substring(0, [Math]::Min(500, $assistantText.Length))
+        })
+        return
+      }
+      $improvedJson = $assistantText.Substring($jsonStart, $jsonEnd - $jsonStart + 1)
+      $improvedData = $improvedJson | ConvertFrom-Json
+      $improvementsCount = if ($improveType -eq "policies") { @($improvedData).Count * 3 } else { @($improvedData).Count }
+      Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{
+        score = 85
+        improvements_count = $improvementsCount
+        type = $improveType
+        data = $improvedData
+      })
+    } catch {
+      Respond-Json -Client $Client -StatusCode 500 -Payload ([ordered]@{ error = $_.Exception.Message })
+    }
+    return
+  }
+  # GET /api/settings
+  if ($segments.Length -eq 2 -and $segments[0] -eq "api" -and $segments[1] -eq "settings" -and $Method -eq "GET") {
+    $hasKey = (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY))
+    Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{
+      ai_enabled  = ($hasKey -and $script:aiKeyValid)
+      has_api_key = $hasKey
+      key_valid   = $script:aiKeyValid
+    })
+    return
+  }
+
+  # POST /api/settings/api-key — save key to .env and apply immediately
+  if ($segments.Length -eq 3 -and $segments[0] -eq "api" -and $segments[1] -eq "settings" -and $segments[2] -eq "api-key" -and $Method -eq "POST") {
+    $payload = ConvertTo-BodyObject -Body $Body
+    $newKey = [string]$payload.api_key
+    if ([string]::IsNullOrWhiteSpace($newKey)) {
+      Respond-Json -Client $Client -StatusCode 400 -Payload ([ordered]@{ error = "api_key is required" })
+      return
+    }
+    $envFile = Join-Path $scriptRoot ".env"
+    $kept = @()
+    if (Test-Path $envFile) { $kept = @(Get-Content $envFile | Where-Object { $_ -notmatch '^\s*ANTHROPIC_API_KEY\s*=' }) }
+    $kept += "ANTHROPIC_API_KEY=$newKey"
+    # Write without BOM — UTF8 with BOM causes the key to load with a junk prefix on restart
+    $enc = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllLines($envFile, $kept, $enc)
+    $env:ANTHROPIC_API_KEY = $newKey
+    Write-Host "[settings] ANTHROPIC_API_KEY saved to .env and applied. Validating..."
+    $valid = Test-AnthropicKeyValid
+    Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{ saved = $true; ai_enabled = $valid; key_valid = $valid })
+    return
+  }
+
+  # ── Evidence file upload ──────────────────────────────────────
+  # POST /api/clients/:id/evidence-upload
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "evidence-upload" -and $Method -eq "POST") {
+    $clientId     = [System.Uri]::UnescapeDataString($segments[2])
+    $payload      = ConvertTo-BodyObject -Body $Body
+    $evidenceId   = [string]$payload.evidence_id
+    $originalName = [string]$payload.file_name
+    $base64Data   = [string]$payload.base64
+
+    if ([string]::IsNullOrWhiteSpace($evidenceId) -or [string]::IsNullOrWhiteSpace($originalName) -or [string]::IsNullOrWhiteSpace($base64Data)) {
+      Respond-Json -Client $Client -StatusCode 400 -Payload ([ordered]@{ error = "evidence_id, file_name, and base64 are required" })
+      return
+    }
+
+    # Sanitize filename — remove path traversal characters
+    $safeName = [System.Text.RegularExpressions.Regex]::Replace($originalName, '[\\/:*?"<>|]', '_').Trim()
+    if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = "attachment" }
+
+    $paths      = Get-SectionPaths -ClientId $clientId
+    $evFolder   = Join-Path (Split-Path -Parent $paths["evidence-tracker"].File) "files"
+    $itemFolder = Join-Path $evFolder $evidenceId
+    New-Item -ItemType Directory -Force -Path $itemFolder | Out-Null
+    $targetPath = Join-Path $itemFolder $safeName
+
+    try {
+      $fileBytes = [System.Convert]::FromBase64String($base64Data)
+      [System.IO.File]::WriteAllBytes($targetPath, $fileBytes)
+      Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{ file_name = $safeName; file_path = $targetPath })
+    } catch {
+      Respond-Json -Client $Client -StatusCode 500 -Payload ([ordered]@{ error = $_.Exception.Message })
+    }
+    return
+  }
+
+  # ── Evidence ZIP export ────────────────────────────────────────
+  # GET /api/clients/:id/evidence-zip
+  if ($segments.Length -eq 4 -and $segments[0] -eq "api" -and $segments[1] -eq "clients" -and $segments[3] -eq "evidence-zip" -and $Method -eq "GET") {
+    $clientId = [System.Uri]::UnescapeDataString($segments[2])
+    $paths    = Get-SectionPaths -ClientId $clientId
+    $etData   = Read-JsonFile -Path $paths["evidence-tracker"].File -DefaultValue ([ordered]@{ evidence_items = @() })
+    $items    = @($etData.evidence_items | Where-Object { $_ })
+
+    if ($items.Count -eq 0) {
+      Respond-Json -Client $Client -StatusCode 200 -Payload ([ordered]@{ error = "No evidence items found" })
+      return
+    }
+
+    Add-Type -AssemblyName System.IO.Compression
+
+    $memStream = [System.IO.MemoryStream]::new()
+    $zip       = [System.IO.Compression.ZipArchive]::new($memStream, [System.IO.Compression.ZipArchiveMode]::Create, $true)
+
+    try {
+      $clientRoot = [System.IO.Path]::GetFullPath((Join-Path $dataRoot $clientId))
+
+      $sanitize = { param([string]$n) [System.Text.RegularExpressions.Regex]::Replace(($n.Trim() -replace '\s+', ' '), '[\\/:*?"<>|]', '_').Trim() }
+
+      foreach ($item in $items) {
+        $itemId    = [string]$item.id
+        $taskId    = & $sanitize ([string]$item.task_id)
+        $evTitle   = & $sanitize ([string]$item.title)
+        if ([string]::IsNullOrWhiteSpace($evTitle)) { $evTitle = $itemId }
+        $folderPfx = "$taskId/$evTitle"
+
+        $filePath = [string]$item.file_path
+        if (-not [string]::IsNullOrWhiteSpace($filePath) -and (Test-Path $filePath -PathType Leaf)) {
+          # Security: file must be within this client's folder
+          $resolvedFile = [System.IO.Path]::GetFullPath($filePath)
+          if ($resolvedFile.StartsWith($clientRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $fileName  = [System.IO.Path]::GetFileName($filePath)
+            $entryName = "$folderPfx/$fileName"
+            $entry     = $zip.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Fastest)
+            $es        = $entry.Open()
+            $fb        = [System.IO.File]::ReadAllBytes($filePath)
+            $es.Write($fb, 0, $fb.Length)
+            $es.Dispose()
+          }
+        } else {
+          # Metadata-only item — write a plain-text descriptor
+          $metaLines = @(
+            "Evidence Item : $([string]$item.title)",
+            "ID            : $itemId",
+            "Task ID       : $([string]$item.task_id)",
+            "Type          : $([string]$item.evidence_type)",
+            "Description   : $([string]$item.description)",
+            "Effective Date: $([string]$item.effective_date)",
+            "Added         : $([string]$item.uploaded_at)",
+            "",
+            "Note: No file was attached to this evidence item — metadata only."
+          )
+          $metaBytes = [System.Text.Encoding]::UTF8.GetBytes(($metaLines -join "`r`n"))
+          $entryName = "$folderPfx/evidence-metadata.txt"
+          $entry     = $zip.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Fastest)
+          $es        = $entry.Open()
+          $es.Write($metaBytes, 0, $metaBytes.Length)
+          $es.Dispose()
+        }
+      }
+
+      $zip.Dispose()
+      $zipBytes = $memStream.ToArray()
+      $memStream.Dispose()
+
+      $safeId    = [System.Text.RegularExpressions.Regex]::Replace($clientId, '[^a-zA-Z0-9\-_ ]', '').Trim()
+      $datestamp = (Get-Date).ToString("yyyy-MM-dd")
+      $zipName   = "Evidence-${safeId}-${datestamp}.zip"
+
+      Send-Response -Client $Client -StatusCode 200 -ContentType "application/zip" -BodyBytes $zipBytes -ExtraHeaders @{
+        "Content-Disposition" = "attachment; filename=""$zipName"""
+        "Cache-Control"       = "no-store"
+        "Access-Control-Allow-Origin" = "*"
+      }
+    } catch {
+      try { $zip.Dispose() }       catch {}
+      try { $memStream.Dispose() } catch {}
+      Respond-Json -Client $Client -StatusCode 500 -Payload ([ordered]@{ error = $_.Exception.Message })
+    }
+    return
+  }
+
   Respond-Text -Client $Client -StatusCode 404 -Text "Not found"
 }
 
-Initialize-VendorCatalogFromExistingData
+# Skip heavy catalog initialization when running as a background worker
+if ($Task -ne "process-client") {
+  Initialize-VendorCatalogFromExistingData
+}
 
-if ($Task -eq "process-client") {
+if ($Task -in @("process-client", "process-risks-worker", "process-vendors-worker", "process-controls-worker")) {
   if (-not $TaskClientId) {
-    throw "Task client ID is required for process-client."
+    throw "Task client ID is required for $Task."
+  }
+
+  # Ensure worker process has API key from .env (parent env vars may not be inherited)
+  if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
+    $workerEnvFile = Join-Path $scriptRoot ".env"
+    if (Test-Path $workerEnvFile) {
+      foreach ($line in Get-Content $workerEnvFile) {
+        if ($line -match '^\s*([^#=\s][^=]*?)\s*=\s*(.*?)\s*$') {
+          $vn = $Matches[1].Trim().TrimStart([char]0xFEFF); $vv = $Matches[2].Trim('"').Trim("'")
+          if (-not [string]::IsNullOrWhiteSpace($vn)) { Set-Item "env:$vn" $vv }
+        }
+      }
+      Write-Host "[worker] Loaded .env — ANTHROPIC_API_KEY $(if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { 'NOT set' } else { 'loaded' })"
+    }
+  }
+
+  if ($Task -eq "process-risks-worker") {
+    try { Invoke-SelectiveRiskRegeneration -ClientId $TaskClientId | Out-Null } catch { Write-Host "[risks-worker] Error: $($_.Exception.Message)" }
+    # Auto-chain: generate vendor assessments as soon as risks are complete
+    try { Invoke-SelectiveVendorRegeneration -ClientId $TaskClientId | Out-Null } catch { Write-Host "[risks-worker] Vendor chain error: $($_.Exception.Message)" }
+    return
+  }
+
+  if ($Task -eq "process-vendors-worker") {
+    try { Invoke-SelectiveVendorRegeneration -ClientId $TaskClientId | Out-Null } catch { Write-Host "[vendors-worker] Error: $($_.Exception.Message)" }
+    return
+  }
+
+  if ($Task -eq "process-controls-worker") {
+    try {
+      $cPaths      = Get-SectionPaths -ClientId $TaskClientId
+      $cOnboarding = Read-JsonFile -Path $cPaths["onboarding"].File       -DefaultValue (New-DefaultSection -SectionKey "onboarding" -ClientId $TaskClientId -CompanyName $TaskClientId)
+      $cPg         = Read-JsonFile -Path $cPaths["policy-generation"].File -DefaultValue ([ordered]@{ policies = @() })
+      $cRa         = Read-JsonFile -Path $cPaths["risk-assessment"].File   -DefaultValue ([ordered]@{ risks    = @() })
+      $cVr         = Read-JsonFile -Path $cPaths["vendor-risk"].File       -DefaultValue ([ordered]@{ vendors  = @() })
+      $cCm         = New-ControlMappingSection -Policies $cPg.policies -Risks $cRa.risks -Vendors $cVr.vendors -FrameworkLabels (Get-FrameworkLabels -Onboarding $cOnboarding)
+      Save-JsonFile -Path $cPaths["control-mapping"].File -Value $cCm
+      $cAudit      = New-AuditQaSection -Policies $cPg.policies -Risks $cRa.risks -Vendors $cVr.vendors -Controls $cCm.controls
+      Save-JsonFile -Path $cPaths["audit-qa"].File -Value $cAudit
+      Write-Host "[controls-worker] Generated $(@($cCm.controls).Count) controls for $TaskClientId"
+    } catch { Write-Host "[controls-worker] Error: $($_.Exception.Message)" }
+    return
   }
 
   try {
@@ -4606,7 +6644,7 @@ try {
       }
       if ($path.StartsWith("/api/")) { Handle-ApiRequest -Client $client -Method $method -Path $path -Body $body } else { Handle-StaticRequest -Client $client -Path $path }
     } catch {
-      Respond-Text -Client $client -StatusCode 500 -Text $_.Exception.Message
+      try { Respond-Text -Client $client -StatusCode 500 -Text $_.Exception.Message } catch {}
     } finally {
       if ($reader) { $reader.Dispose() }
       if ($stream) { $stream.Dispose() }

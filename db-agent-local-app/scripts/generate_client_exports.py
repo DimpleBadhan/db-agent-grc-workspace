@@ -82,6 +82,17 @@ def slugify(value: str) -> str:
     return cleaned or "policy"
 
 
+def split_sentences(text: str) -> list[str]:
+    """Split a paragraph into bullet sentences at '. Capital' boundaries."""
+    parts = re.split(r"\.\s+(?=[A-Z])", text)
+    result = []
+    for p in parts:
+        p = p.strip().rstrip(".") + "."
+        if len(p) > 16:
+            result.append(p)
+    return result if len(result) >= 2 else []
+
+
 def write_csv(path: Path, rows: list[dict], headers: list[str]) -> str:
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=headers)
@@ -158,9 +169,9 @@ def build_policy_pdf(path: Path, client_name: str, policies: list[dict], generat
         fontName="Helvetica-Bold",
         fontSize=11,
         leading=14,
-        textColor=colors.HexColor("#111827"),
-        spaceBefore=6,
-        spaceAfter=4,
+        textColor=colors.HexColor("#0D7377"),
+        spaceBefore=8,
+        spaceAfter=2,
     )
     body_style = ParagraphStyle(
         "PolicyBody",
@@ -204,16 +215,44 @@ def build_policy_pdf(path: Path, client_name: str, policies: list[dict], generat
         for raw_line in sanitize_text(text).replace("\r", "").split("\n"):
             line = raw_line.strip()
             if not line:
+                story.append(Spacer(1, 4))
                 continue
+
+            # Old inline format: "1.1 Heading. Content paragraph..."
+            inline = re.match(
+                r"^(\d+\.\d+(?:\.\d+)?\s+[A-Za-z][^.\r\n]{2,55})\.\s+([A-Z].{15,})$",
+                line,
+            )
+            if inline:
+                story.append(Paragraph(escape(inline.group(1)), numbered_heading_style))
+                story.append(Spacer(1, 2))
+                sentences = split_sentences(inline.group(2))
+                if sentences:
+                    for s in sentences:
+                        story.append(Paragraph(f"• {escape(s)}", bullet_style))
+                else:
+                    story.append(Paragraph(escape(inline.group(2)), body_style))
+                continue
+
             safe_line = escape(line)
-            if re.match(r"^\d+\.\s", line):
+
+            # Main section heading "1. Title" (not "1.1")
+            if re.match(r"^\d+\.\s+\S", line) and not re.match(r"^\d+\.\d+", line):
                 story.append(Paragraph(safe_line, section_heading_style))
-            elif re.match(r"^\d+\.\d+\s", line):
+            # Subsection heading already on its own line "1.1 Title"
+            elif re.match(r"^\d+\.\d+(\.\d+)?\s+\S", line) and len(line) < 80:
                 story.append(Paragraph(safe_line, numbered_heading_style))
+                story.append(Spacer(1, 2))
             elif line.startswith("- "):
                 story.append(Paragraph(f"• {escape(line[2:].strip())}", bullet_style))
             else:
-                story.append(Paragraph(safe_line, body_style))
+                # Content paragraph — bullet if multiple sentences
+                sentences = split_sentences(line)
+                if sentences:
+                    for s in sentences:
+                        story.append(Paragraph(f"• {escape(s)}", bullet_style))
+                else:
+                    story.append(Paragraph(safe_line, body_style))
 
     story = [
         Paragraph("DB Agent Policy Pack", title_style),
