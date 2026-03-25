@@ -2,7 +2,7 @@
 
 DB Agent is a client-centric GRC workspace for GRC consultancies. It handles client onboarding, AI-powered policy generation, risk assessment, vendor risk assessment, control mapping, and audit-ready outputs — all running locally with no third-party SaaS dependency.
 
-Built for GRC consultancies to manage multiple clients through a full compliance workflow — from onboarding to audit-ready outputs.
+Built to run a full GRC compliance workflow for multiple clients — from onboarding through to audit-ready outputs.
 
 ---
 
