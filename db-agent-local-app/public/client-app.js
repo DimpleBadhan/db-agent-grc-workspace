@@ -1426,8 +1426,13 @@ async function exportPoliciesZip(clientData) {
     if (/^##\s+/.test(t))  return { type: "h2", text: t.replace(/^##\s+/, "").trim() };
     if (/^#\s+/.test(t))   return { type: "h1", text: t.replace(/^#\s+/, "").trim() };
     // Numbered sections: "1. Title", "12. Title"  (top-level section)
+    // Only a heading if short (≤55 chars of body text) and doesn't end with sentence punctuation
     const h1m = t.match(/^(\d+)\.\s+(.+)$/);
-    if (h1m && !/^\d+\.\d/.test(t)) return { type: "h1", text: t.trim() };
+    if (h1m && !/^\d+\.\d/.test(t)) {
+      const bodyText = h1m[2];
+      const isHeading = bodyText.length <= 55 && !/[.!?]$/.test(bodyText.trimEnd());
+      return isHeading ? { type: "h1", text: t.trim() } : { type: "para", text: t.trim() };
+    }
     // Sub-sections: "1.1 Title", "1.1.1 Title"
     const h2m = t.match(/^(\d+\.\d+)\s+(.+)$/);
     if (h2m && !/^\d+\.\d+\.\d/.test(t)) return { type: "h2", text: t.trim() };
@@ -1560,33 +1565,40 @@ async function exportPoliciesZip(clientData) {
       }
 
       if (type === "h1") {
-        // Add spacing before section headers (not at very top)
-        if (prevType !== "blank" && prevType !== "h1") y += 5;
-        y = checkPage(doc, y, 12);
-        // Underline the full section header
+        // Spacing before section header
+        if (prevType !== "blank" && prevType !== "h1") y += 6;
+        y = checkPage(doc, y, 14);
+        // Left accent bar
+        const barH = 8;
+        setColor(doc, C.accent, "fill");
+        doc.rect(ML - 6, y - barH + 2, 2.5, barH, "F");
+        // Heading text — helvetica bold, navy
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(11.5);
+        doc.setFontSize(11);
         setColor(doc, C.h1);
-        const wrapped = doc.splitTextToSize(text, TW);
+        const wrapped = doc.splitTextToSize(text, TW - 2);
         doc.text(wrapped, ML, y);
-        const lineH = wrapped.length * 6;
-        // Underline
-        setColor(doc, C.accent, "draw");
-        doc.setLineWidth(0.5);
-        doc.line(ML, y + 1.5, ML + Math.min(doc.getTextWidth(wrapped[0]), TW), y + 1.5);
-        y += lineH + 3;
+        // Subtle full-width rule below
+        setColor(doc, C.rule, "draw");
+        doc.setLineWidth(0.25);
+        doc.line(ML, y + 2.5, ML + TW, y + 2.5);
+        y += wrapped.length * 6 + 4;
         prevType = "h1";
         continue;
       }
 
       if (type === "h2") {
-        if (prevType !== "blank") y += 3;
+        if (prevType !== "blank") y += 4;
         y = checkPage(doc, y, 10);
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
+        doc.setFontSize(9.5);
         setColor(doc, C.h2);
         const wrapped = doc.splitTextToSize(text, TW);
         doc.text(wrapped, ML, y);
+        // Thin underline only on h2 subsections
+        setColor(doc, [200, 212, 235], "draw");
+        doc.setLineWidth(0.2);
+        doc.line(ML, y + 1.5, ML + Math.min(doc.getTextWidth(wrapped[0]), TW * 0.6), y + 1.5);
         y += wrapped.length * 5.5 + 2;
         prevType = "h2";
         continue;
@@ -1596,7 +1608,7 @@ async function exportPoliciesZip(clientData) {
         if (prevType !== "blank") y += 2;
         y = checkPage(doc, y, 8);
         doc.setFont("helvetica", "bolditalic");
-        doc.setFontSize(9.5);
+        doc.setFontSize(9);
         setColor(doc, C.h3);
         const wrapped = doc.splitTextToSize(text, TW);
         doc.text(wrapped, ML, y);
@@ -1607,34 +1619,34 @@ async function exportPoliciesZip(clientData) {
 
       if (type === "bullet") {
         y = checkPage(doc, y, 8);
-        const bx = ML + 4;
-        const btw = TW - 7;
+        const bx = ML + 5;
+        const btw = TW - 8;
         const wrapped = doc.splitTextToSize(text, btw);
-        if (y + wrapped.length * 5 > PH - MB - 6) { doc.addPage(); y = MT; }
+        if (y + wrapped.length * 5.4 > PH - MB - 6) { doc.addPage(); y = MT; }
         // Bullet dot
-        setColor(doc, C.bullet);
+        setColor(doc, C.accent);
         doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.text("•", ML, y);
+        // Bullet text — times for readability
+        doc.setFont("times", "normal");
         doc.setFontSize(10);
-        doc.text("·", ML, y);
-        // Bullet text
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9.5);
         setColor(doc, C.body);
         doc.text(wrapped, bx, y);
-        y += wrapped.length * 5 + 1.5;
+        y += wrapped.length * 5.4 + 1.5;
         prevType = "bullet";
         continue;
       }
 
       if (type === "para") {
         y = checkPage(doc, y, 8);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9.5);
+        doc.setFont("times", "normal");
+        doc.setFontSize(10);
         setColor(doc, C.body);
         const wrapped = doc.splitTextToSize(text, TW);
-        if (y + wrapped.length * 5.2 > PH - MB - 6) { doc.addPage(); y = MT; }
+        if (y + wrapped.length * 5.4 > PH - MB - 6) { doc.addPage(); y = MT; }
         doc.text(wrapped, ML, y);
-        y += wrapped.length * 5.2 + 1;
+        y += wrapped.length * 5.4 + 1.5;
         prevType = "para";
       }
     }
@@ -2151,10 +2163,15 @@ function createField(field, value, prefix, errorMessage = "") {
         }
 
         // Main section heading "1. Title" (not "1.1")
+        // Only a heading if short body text that doesn't end with sentence punctuation
         if (/^\d+\.\s+\S/.test(t) && !/^\d+\.\d+/.test(t)) {
-          html += `<div class="policy-preview-h1">${esc(t)}</div>`;
-          prevWasH = true;
-          continue;
+          const bodyText = t.replace(/^\d+\.\s+/, "");
+          const isHeading = bodyText.length <= 55 && !/[.!?]$/.test(bodyText.trimEnd());
+          if (isHeading) {
+            html += `<div class="policy-preview-h1">${esc(t)}</div>`;
+            prevWasH = true;
+            continue;
+          }
         }
 
         // Subsection heading already on its own line "1.1 Title"
