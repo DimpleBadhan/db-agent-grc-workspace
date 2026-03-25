@@ -37,11 +37,13 @@ Every AI step uses the client's actual environment — cloud providers, identity
 - **AI policy generation** — 25 policies written specifically for each client, referencing their real tools, vendors, data types, and risks
 - **AI risk discovery** — company-specific risks identified from onboarding data before policies are written, so policies address real risks
 - **Vendor risk assessment** — all client vendors assessed with data access, DPA, contract, and certification checks
-- **Control mapping** — policies and risks mapped to SOC 2, ISO 27001, or other framework controls
+- **Control mapping** — policies and risks mapped to SOC 2, ISO 27001, or other framework controls with searchable control manager
 - **Change detection engine** — onboarding or vendor changes automatically trigger selective regeneration of affected policies, risks, and vendor assessments
-- **Audit-ready outputs** — downloadable policy pack, risk register, vendor assessments, and control mapping
-- **Policy governance** — sign-off, publish, and approval history tracking per policy
+- **Audit-ready outputs** — downloadable policy pack (PDF), risk register (CSV), vendor assessments, and control mapping
+- **PDF policy pack** — properly formatted A4 PDFs with cover header, metadata band, section headings, and Times body font; zipped for delivery
+- **Policy governance** — sign-off, publish, and approval history tracking per policy; locked during active AI generation
 - **Evidence tracker** — evidence tasks linked to controls and risks
+- **Risk matrix** — dual inherent/residual heatmaps with word-based axis labels, cell tooltips showing risk names, movement indicators, and stacked severity bar
 - **Fully local** — all data stored on disk, no cloud dependency, no SaaS fees
 
 ---
@@ -65,8 +67,14 @@ Every AI step uses the client's actual environment — cloud providers, identity
 ├── db-agent-local-app/         # Main local app (Node.js server + frontend)
 │   ├── server.js               # Express server — all endpoints and AI agents
 │   ├── package.json            # Node.js dependencies
+│   ├── .env.example            # Environment variable template
 │   ├── run-local.bat           # Double-click to start the app
-│   ├── public/                 # Frontend JS and HTML
+│   ├── public/
+│   │   ├── client-app.js       # Main frontend — all UI rendering and state
+│   │   ├── styles.css          # UI styles
+│   │   ├── risk-vendor-manager.js  # Risk, vendor, and control manager views
+│   │   ├── onboarding-pdf.js   # Onboarding PDF export helper
+│   │   └── index.html          # App shell
 │   ├── prompts/                # AI prompt files
 │   ├── config/                 # Agent prompt registry and settings
 │   └── local-processing-store/ # Client data (gitignored)
@@ -145,6 +153,18 @@ The change engine monitors onboarding and vendor data for changes and automatica
 - Repo is private
 - Branch protection on `main` — all changes via pull request
 - Dependabot enabled for dependency vulnerability alerts
+
+---
+
+## UI highlights
+
+- **Phase tab navigation** — SVG icon per phase for quick identification
+- **Risk heatmaps** — dual inherent/residual matrices, word axis labels (CAT/MAJ/MOD/MIN/NEG), cell tooltips with risk/vendor names
+- **Risk summary panel** — average scores with band labels, movement row (improved / unchanged / worsened), stacked severity bar
+- **Workflow tracker** — overall % progress bar above step grid
+- **Policy list** — approval progress bar, AI-generated badge, collapsible body with word count
+- **Download badges** — colour-coded file-type labels (PDF / XLSX / CSV / DOCX / JSON / ZIP)
+- **Control manager** — searchable control list with Policy/Vendor type filters and detail tabs (Overview / Linkages / Evidence)
 
 ---
 
