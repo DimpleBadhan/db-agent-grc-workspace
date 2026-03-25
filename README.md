@@ -2,7 +2,7 @@
 
 DB Agent is a client-centric GRC workspace for GRC consultancies. It handles client onboarding, AI-powered policy generation, risk assessment, vendor risk assessment, control mapping, and audit-ready outputs — all running locally with no third-party SaaS dependency.
 
-Built for [GreenHat Assurance](https://greenhatassurance.in.com) — a GRC consultancy providing audit readiness and compliance services.
+Built for GRC consultancies to manage multiple clients through a full compliance workflow — from onboarding to audit-ready outputs.
 
 ---
 
@@ -170,4 +170,4 @@ The change engine monitors onboarding and vendor data for changes and automatica
 
 ## Status
 
-Active development. Running in production for GreenHat Assurance client work.
+Active development. Running in production — GreenHat Assurance is one of the active clients.
