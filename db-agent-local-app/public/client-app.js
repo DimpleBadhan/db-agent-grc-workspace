@@ -2717,7 +2717,7 @@ function getPolicyGenerationProgress(clientData) {
   const completed  = normalizedStatus === "completed";
   const failed     = normalizedStatus === "failed";
   // "queued" = server has acknowledged the request but hasn't started writing yet
-  const queued = normalizedStatus !== "" && !inProgress && !completed && !failed;
+  const queued = normalizedStatus !== "" && normalizedStatus !== "not started" && !inProgress && !completed && !failed;
   return {
     inProgress,
     queued,
@@ -5460,7 +5460,7 @@ async function savePhase(config, form, options = {}) {
     : null;
 
   setStatus(`Saving ${config.label.toLowerCase()}...`);
-  state.selectedClientData[config.property] = await api(
+  state.selectedClientData = await api(
     `/api/clients/${encodeURIComponent(state.selectedClientId)}/${sectionKey}`,
     {
       method: "PUT",

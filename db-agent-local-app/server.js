@@ -280,6 +280,40 @@ function getClientUsernames(onboarding) {
   return raw.split(/[,|;\n]/).map(s => s.split('|')[0].trim()).filter(Boolean);
 }
 
+// ── Vendor governance (preserve AI-generated assessment fields) ─────────────
+function applyVendorGovernance(currentVendors, incomingVendors) {
+  if (!Array.isArray(incomingVendors) || incomingVendors.length === 0) return currentVendors || [];
+  const currentMap = {};
+  for (const v of (currentVendors || [])) { if (v && v.vendor_id) currentMap[v.vendor_id] = v; }
+  const AI_FIELDS = ['treatment_plan','inherent_risk','residual_risk','vendor_likelihood','vendor_impact',
+    'inherent_score','residual_likelihood','residual_impact','residual_score','linked_risks','linked_controls'];
+  return incomingVendors.filter(Boolean).map(incoming => {
+    const existing = currentMap[incoming.vendor_id] || {};
+    const merged = { ...incoming };
+    for (const f of AI_FIELDS) {
+      if (!merged[f] && existing[f]) merged[f] = existing[f];
+    }
+    return merged;
+  });
+}
+
+// ── Risk governance (preserve AI-generated treatment fields) ─────────────────
+function applyRiskGovernance(currentRisks, incomingRisks) {
+  if (!Array.isArray(incomingRisks) || incomingRisks.length === 0) return currentRisks || [];
+  const currentMap = {};
+  for (const r of (currentRisks || [])) { if (r && r.risk_id) currentMap[r.risk_id] = r; }
+  const AI_FIELDS = ['treatment_plan','control_recommendations','inherent_score','residual_score',
+    'likelihood','impact','residual_likelihood','residual_impact','linked_controls','linked_vendors'];
+  return incomingRisks.filter(Boolean).map(incoming => {
+    const existing = currentMap[incoming.risk_id] || {};
+    const merged = { ...incoming };
+    for (const f of AI_FIELDS) {
+      if (!merged[f] && existing[f]) merged[f] = existing[f];
+    }
+    return merged;
+  });
+}
+
 // ── Policy governance (preserve approval history) ──────────────────────────
 function applyPolicyGovernance(currentPolicies, incomingPolicies, onboarding) {
   const currentMap = {};
@@ -879,7 +913,7 @@ Rules:
   return result;
 }
 
-async function runPolicyWriterAgent(policies, brief, onboarding) {
+async function runPolicyWriterAgent(policies, brief, onboarding, onBatchComplete) {
   if (!process.env.ANTHROPIC_API_KEY) return policies;
 
   const co       = onboarding.legal_entity || brief.company || 'The Organization';
@@ -975,11 +1009,15 @@ MANDATORY WRITING RULES — all rules apply to every policy:
   for (let i = 0; i < policies.length; i += batchSize) {
     const batch = policies.slice(i, i + batchSize);
     const user = `Rewrite the body and executive_summary of each policy to be fully specific to ${co}. CRITICAL: Do NOT use the formula "[Company] establishes the standards for [X] in support of [business description]" — this is banned. Each policy must open with a unique, subject-specific sentence. Do NOT copy the business model description into policy text. Use ONLY the tools, vendors, and data types listed. Reference ${cloud}, ${idp}, ${data}, ${monitor}, and relevant vendors where applicable. Every policy must read as written specifically for ${co}'s real ${industry} environment. Return complete policy array as JSON. Input: ${JSON.stringify(batch)}`;
-    console.log(`[PolicyWriter] Batch ${Math.floor(i/batchSize)+1}/${Math.ceil(policies.length/batchSize)}`);
+    const batchNum = Math.floor(i/batchSize)+1;
+    const totalBatches = Math.ceil(policies.length/batchSize);
+    console.log(`[PolicyWriter] Batch ${batchNum}/${totalBatches}`);
+    if (onBatchComplete) onBatchComplete(batchNum, totalBatches);
     const raw = await invokeClaudeApi(system, user, 16000);
     const result = extractJsonArray(raw);
     if (result && result.length > 0) { written.push(...result); }
     else { written.push(...batch); }
+    if (onBatchComplete) onBatchComplete(batchNum, totalBatches, true);
   }
   return written.length > 0 ? written : policies;
 }
@@ -1242,7 +1280,12 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
         // Agent 2 — Policy Writer
         pg = startStage(pg, 'writer', 'Policy writer agent — rewriting with company-specific depth.');
         saveJson(paths['policy-generation'].file, pg);
-        const written = await runPolicyWriterAgent(finalPolicies, brief, onboarding);
+        const written = await runPolicyWriterAgent(finalPolicies, brief, onboarding, (batchNum, totalBatches, done) => {
+          pg.generation_stage_note = done
+            ? `Policy writer agent — Batch ${batchNum}/${totalBatches} complete`
+            : `Policy writer agent — Writing batch ${batchNum}/${totalBatches}…`;
+          saveJson(paths['policy-generation'].file, pg);
+        });
         if (written && written.length > 0) finalPolicies = written;
         completeStage(pg, 'writer');
         // Save intermediate so status poll shows policies written
@@ -1598,7 +1641,11 @@ app.put('/api/clients/:id/:sectionKey', (req, res) => {
       updateVendorCatalog(Array.isArray(current.vendors) ? current.vendors : []);
     }
     if (sectionKey === 'vendor-risk') {
-      updateVendorCatalog(Array.isArray(current.vendors) ? current.vendors : []);
+      current.vendors = applyVendorGovernance(previous.vendors || [], current.vendors || []);
+      updateVendorCatalog(current.vendors);
+    }
+    if (sectionKey === 'risk-assessment') {
+      current.risks = applyRiskGovernance(previous.risks || [], current.risks || []);
     }
     saveJson(paths[sectionKey].file, current);
     res.json(getClientAggregate(clientId));
