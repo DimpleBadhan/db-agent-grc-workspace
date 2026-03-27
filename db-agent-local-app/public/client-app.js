@@ -139,6 +139,14 @@ const phaseConfigs = [
             placeholder: "Describe backups, recovery steps, or disaster recovery arrangements."
           },
           {
+            name: "rto_rpo_targets",
+            label: "Please provide your documented RTO and RPO targets for critical customer-facing systems, important business systems, and low-criticality or back-office systems, and describe how these targets are validated.",
+            type: "textarea",
+            full: true,
+            rows: 4,
+            placeholder: "e.g. Critical systems: RTO 4h / RPO 1h. Important systems: RTO 24h / RPO 4h. Back-office: RTO 72h / RPO 24h. Targets validated via annual DR tests and tabletop exercises."
+          },
+          {
             name: "monitoring",
             label: "How do you detect issues or security events?",
             type: "textarea",

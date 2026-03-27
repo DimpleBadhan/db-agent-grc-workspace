@@ -128,7 +128,7 @@ function newDefaultSection(sectionKey, clientId, companyName) {
       work_type: '', company_type: '', industry: '', tech_stack: '', cloud_providers: '',
       storage_regions: '', devices_used: '', operating_systems: '', identity_provider: '',
       mfa_enabled: '', access_model: '', data_types: '', classification: '', encryption: '',
-      backup: '', monitoring: '', top_risks: '', vulnerabilities: '', incidents: '',
+      backup: '', rto_rpo_targets: '', monitoring: '', top_risks: '', vulnerabilities: '', incidents: '',
       framework_selection: '', audit_timeline: '', scope: '', client_users: '', client_usernames: '',
       client_user_records: [], policy_templates: '', iso_27001_framework: '', soc2_framework: '',
       vendors: [], reprocessing_required: '', change_notice: '', downstream_reset_at: '',
@@ -683,11 +683,30 @@ function buildControlMappingSection(policies, risks, vendors, frameworkLabels) {
     controls.push(ctrl);
   }
 
+  // Fraud-specific controls — always include per framework requirements
+  const fraudRisks = (risks || []).filter(r => r && String(r.category || '').toLowerCase().includes('fraud'));
+  let ctrlFrd = 1;
+  for (const fr of fraudRisks) {
+    controls.push({
+      control_id: `CTRL-FRD-${String(ctrlFrd++).padStart(3,'0')}`,
+      control_category: 'Fraud Prevention',
+      framework_mapping: fw,
+      control_title: `Fraud Risk Control — ${fr.threat || 'Fraud'}`,
+      description: `Controls to detect, prevent, and respond to fraud risk: ${fr.threat || 'fraud exposure'}. Includes segregation of duties, transaction monitoring, and escalation procedures.`,
+      linked_policies: fr.linked_policies || '',
+      linked_risks: fr.risk_id || '',
+      linked_vendors: '',
+      owner: fr.treatment_owner || '',
+      frequency: 'Quarterly',
+      evidence: `Fraud risk assessment record, transaction monitoring logs, segregation of duties matrix, incident reports, annual fraud awareness training completion.`,
+    });
+  }
+
   return { mapping_basis: fw, evidence_standard: 'Control evidence mapped to policy, risk, and vendor register.', controls, updatedAt: null };
 }
 
 // ── Audit QA section ───────────────────────────────────────────────────────
-function buildAuditQaSection(policies, risks, vendors, controls) {
+function buildAuditQaSection(policies, risks, vendors, controls, onboarding) {
   const findings = [];
   let c = 1;
 
@@ -708,6 +727,20 @@ function buildAuditQaSection(policies, risks, vendors, controls) {
     if (!v.has_dpa || v.has_dpa === 'Not sure') {
       findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: v.vendor_id, entity_type: 'Vendor', severity: 'High', category: 'Contractual', details: `${v.vendor_name} — DPA status unconfirmed.`, resolution_status: 'Open' });
     }
+  }
+  // Check RTO/RPO targets are documented
+  if (onboarding && !String(onboarding.rto_rpo_targets || '').trim()) {
+    findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'ONBOARDING-RTORPO', entity_type: 'Onboarding', severity: 'Medium', category: 'Business Continuity', details: 'RTO and RPO targets have not been documented. Applicable frameworks require defined and validated recovery time and recovery point objectives.', resolution_status: 'Open' });
+  }
+  // Check fraud risk is documented (framework requirement)
+  const hasFraudRisk = (risks || []).some(r => r && String(r.category || '').toLowerCase().includes('fraud'));
+  if (!hasFraudRisk) {
+    findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'RISK-FRAUD', entity_type: 'Risk', severity: 'High', category: 'Fraud Assessment', details: 'No fraud risk has been documented in the risk register. Applicable frameworks require at least one fraud risk to be assessed and recorded.', resolution_status: 'Open' });
+  }
+  // Check fraud risk has a mapped control
+  const hasFraudControl = (controls || []).some(ctrl => String(ctrl.control_category || '').toLowerCase().includes('fraud'));
+  if (hasFraudRisk && !hasFraudControl) {
+    findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'CTRL-FRAUD', entity_type: 'Control', severity: 'Medium', category: 'Fraud Assessment', details: 'Fraud risk is documented but no fraud prevention control has been mapped. A fraud-specific control should be added to the control register.', resolution_status: 'Open' });
   }
 
   return {
@@ -839,10 +872,31 @@ async function buildCompanyBrief(onboarding) {
   const ai = getAnthropic();
   if (!ai) return base;
   const system = 'You are a senior GRC consultant. Read client onboarding data and produce a structured company brief used by downstream AI agents. Be precise and factual. Return ONLY valid JSON — no markdown, no explanation.';
-  const user = `Produce a company brief from this onboarding data. Include: company name, industry, full tech stack, data types handled, compliance frameworks, headcount band, scope, top 3-5 implied key risks, and recommended documentation tone. Onboarding: ${JSON.stringify(onboarding)}`;
+  const user = `Produce a company brief from this onboarding data. Include: company name, industry, full tech stack, data types handled, compliance frameworks, headcount band, scope, top 3-5 implied key risks (always include a fraud risk), RTO/RPO targets if provided, and recommended documentation tone. Onboarding: ${JSON.stringify(onboarding)}`;
   const raw = await invokeClaudeApi(system, user, 2000);
   const result = extractJsonObject(raw);
   return result || base;
+}
+
+function ensureFraudRisk(risks, onboarding) {
+  const hasFraud = (risks || []).some(r => r && String(r.category || '').toLowerCase().includes('fraud'));
+  if (hasFraud) return risks;
+  const co   = onboarding.legal_entity || 'The Organization';
+  const data = onboarding.data_types   || 'company and client data';
+  const fw   = Array.isArray(onboarding.framework_selection_v2)
+    ? onboarding.framework_selection_v2.join(', ')
+    : (onboarding.framework_selection_v2 || onboarding.framework_selection || 'applicable framework');
+  console.log(`[RiskDiscovery] No fraud risk found — injecting mandatory fraud risk for ${co}`);
+  return [...(risks || []), {
+    title: `Fraud risk — misappropriation, invoice fraud, or identity fraud affecting ${co}`,
+    category: 'Fraud',
+    threat_source: 'Internal personnel, compromised accounts, or external fraudsters targeting ${co} operations',
+    why_this_company: `${co} handles ${data} and conducts financial and operational activity that could be exploited through fraudulent transactions, social engineering, or insider misuse. ${fw} requires fraud risk to be assessed and documented.`,
+    likelihood: 2,
+    impact: 4,
+    likelihood_justification: `Controls and oversight reduce likelihood, but fraud risk exists in any organisation handling sensitive data and financial transactions.`,
+    impact_justification: `Fraud incidents can result in direct financial loss, regulatory sanction, reputational damage, and loss of client trust for ${co}.`,
+  }];
 }
 
 async function runRiskDiscoveryAgent(onboarding, brief) {
@@ -879,6 +933,7 @@ async function runRiskDiscoveryAgent(onboarding, brief) {
 COMPANY PROFILE:
 Company: ${co} | Cloud: ${cloud} | Identity: ${idp} | MFA: ${onboarding.mfa_enabled||''} | Access model: ${onboarding.access_model||''}
 Data types: ${data} | Classification: ${classif} | Encryption: ${enc} | Backup: ${backup}
+RTO/RPO targets: ${onboarding.rto_rpo_targets||'not specified'}
 Monitoring: ${monitor} | Devices: ${devices} | OS: ${opSys} | Work model: ${workType}
 Publicly accessible: ${pubAccess} | IR process: ${irProcess} | Critical access (many people): ${critAccess}
 Prod changes peer-reviewed: ${prodChanges} | Security owner: ${secOwner}
@@ -888,7 +943,7 @@ Vendors: ${vendorList}
 For each risk return a JSON object with these exact fields:
 {
   "title": "short specific risk title referencing actual ${co} context",
-  "category": "one of: Data Protection | Access Control | Vendor Risk | Infrastructure | Incident Response | Business Continuity | Change Management | Compliance",
+  "category": "one of: Data Protection | Access Control | Vendor Risk | Infrastructure | Incident Response | Business Continuity | Change Management | Compliance | Fraud",
   "threat_source": "specific threat actor or cause relevant to ${co}",
   "why_this_company": "1-2 sentences explaining why THIS company specifically faces this risk — reference actual tools, data types, vendors",
   "likelihood": number 1-5,
@@ -901,16 +956,18 @@ Rules:
 - Every risk must reference ${co}'s actual environment — name tools, data types, vendors
 - Do NOT use generic titles like "Data Breach" — be specific e.g. "Client PII exposure via AWS S3 misconfiguration"
 - Cover a range of categories — do not duplicate categories
-- Calibrate likelihood/impact based on actual posture (e.g. if IR process exists, lower likelihood of undetected breach)`;
+- Calibrate likelihood/impact based on actual posture (e.g. if IR process exists, lower likelihood of undetected breach)
+- MANDATORY: At least one risk must have category "Fraud" — this is a framework requirement. The fraud risk must be specific to ${co}'s business model, data types, and financial/operational exposure (e.g. payment fraud, invoice fraud, insider misappropriation, identity fraud against clients)`;
 
   const raw = await invokeClaudeApi(system, user, 6000);
   const result = extractJsonArray(raw);
   if (!result || result.length === 0) {
     console.log('[RiskDiscovery] AI returned no results, using derived risks');
-    return getDerivedTopRisks(onboarding);
+    return ensureFraudRisk(getDerivedTopRisks(onboarding), onboarding);
   }
-  console.log(`[RiskDiscovery] Generated ${result.length} company-specific risks for ${co}`);
-  return result;
+  const withFraud = ensureFraudRisk(result, onboarding);
+  console.log(`[RiskDiscovery] Generated ${withFraud.length} company-specific risks for ${co} (fraud risk guaranteed)`);
+  return withFraud;
 }
 
 async function runPolicyWriterAgent(policies, brief, onboarding, onBatchComplete) {
@@ -1150,7 +1207,7 @@ async function runVendorAnalystAgent(vendors, policies, risks, brief, onboarding
 Legal entity: ${co} | Industry: ${industry} | Headcount: ${headcount}
 Cloud: ${cloud} | Regions: ${regions} | IdP: ${idp} | MFA: ${mfa}
 Data: ${data} | Classification: ${classif} | Encryption: ${enc}
-Backup: ${backup} | SIEM: ${monitor} | Framework: ${framework}
+Backup: ${backup} | RTO/RPO: ${onboarding.rto_rpo_targets||'not specified'} | SIEM: ${monitor} | Framework: ${framework}
 Security owner: ${secOwner}
 Business: ${biz}
 
@@ -1357,13 +1414,14 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
 
 async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brief, paths) {
   // Risks
-  let ra = buildRiskAssessmentSection(onboarding, topRisks, policies);
+  let ra = buildRiskAssessmentSection(onboarding, ensureFraudRisk(topRisks, onboarding), policies);
   if (process.env.ANTHROPIC_API_KEY) {
     const withPlans = await runTreatmentPlanAgent(ra.risks, onboarding, policies, []);
     if (withPlans && withPlans.length > 0) ra.risks = withPlans;
     const aiRisks = await runRiskAnalystAgent(ra.risks, policies, brief, onboarding);
     if (aiRisks && aiRisks.length > 0) ra.risks = aiRisks;
   }
+  ra.risks = ensureFraudRisk(ra.risks, onboarding);
   saveJson(paths['risk-assessment'].file, ra);
   saveJson(paths['risk-qa'].file, buildRiskQaSection(ra.risks));
 
@@ -1381,7 +1439,7 @@ async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brie
   const fw = getFrameworkLabels(onboarding);
   const cm = buildControlMappingSection(policies, ra.risks, vr.vendors, fw);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls, onboarding);
   saveJson(paths['audit-qa'].file, aq);
 
   // Output
@@ -1434,7 +1492,7 @@ async function runSelectiveVendorRegeneration(clientId) {
   const fw = getFrameworkLabels(onboarding);
   const cm = buildControlMappingSection(policies, risks, vr.vendors, fw);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(policies, risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(policies, risks, vr.vendors, cm.controls, onboarding);
   saveJson(paths['audit-qa'].file, aq);
   console.log(`[vendors-worker] Generated ${vr.vendors.length} vendors for ${clientId}`);
 }
@@ -1496,7 +1554,7 @@ if (taskArg && workerTasks.includes(taskArg) && clientArg) {
         const fw = getFrameworkLabels(ob);
         const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw);
         saveJson(paths['control-mapping'].file, cm);
-        const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls);
+        const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
         saveJson(paths['audit-qa'].file, aq);
         console.log(`[controls-worker] Generated ${cm.controls.length} controls for ${clientArg}`);
       }
@@ -1752,7 +1810,7 @@ app.post('/api/clients/:id/process-controls', (req, res) => {
   const fw = getFrameworkLabels(ob);
   const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
   saveJson(paths['audit-qa'].file, aq);
   res.json(getClientAggregate(clientId));
 });
@@ -1761,11 +1819,12 @@ app.post('/api/clients/:id/process-controls', (req, res) => {
 app.post('/api/clients/:id/process-audit', (req, res) => {
   const clientId = decodeURIComponent(req.params.id);
   const paths = getSectionPaths(clientId);
+  const ob = readJson(paths.onboarding.file, {});
   const pg = readJson(paths['policy-generation'].file, { policies: [] });
   const ra = readJson(paths['risk-assessment'].file, { risks: [] });
   const vr = readJson(paths['vendor-risk'].file, { vendors: [] });
   const cm = readJson(paths['control-mapping'].file, { controls: [] });
-  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
   saveJson(paths['audit-qa'].file, aq);
   res.json(getClientAggregate(clientId));
 });
