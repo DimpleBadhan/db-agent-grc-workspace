@@ -170,4 +170,4 @@ The change engine monitors onboarding and vendor data for changes and automatica
 
 ## Status
 
-Active development. Running in production — GreenHat Assurance is one of the active clients.
+Active development. Running in production with active clients.
