@@ -36,6 +36,7 @@ const configRoot        = path.join(scriptRoot, 'config');
 const promptRoot        = path.join(scriptRoot, 'prompts');
 const vendorCatalogPath   = path.join(catalogRoot, 'vendor-catalog.json');
 const soc2ControlsPath    = path.join(workspaceRoot, 'compliance_inputs', 'frameworks', 'soc2', 'soc2-controls.json');
+const iso27001ControlsPath = path.join(workspaceRoot, 'compliance_inputs', 'frameworks', 'iso27001', 'iso27001-controls.json');
 
 // Ensure directories exist
 for (const dir of [processingRoot, catalogRoot, dataRoot, exportsRoot, auditLogsRoot, frameworkCacheRoot]) {
@@ -68,6 +69,50 @@ function parseTscScope(onboarding) {
     if (raw.trim()) return raw.split(',').map(s => s.trim()).filter(Boolean);
   }
   return ['Security'];
+}
+
+// ── ISO 27001:2022 controls reference data ────────────────────────────────
+let iso27001Controls = { controls: [], themes: {} };
+try {
+  if (fs.existsSync(iso27001ControlsPath)) {
+    iso27001Controls = JSON.parse(fs.readFileSync(iso27001ControlsPath, 'utf8'));
+    console.log(`[ISO27001] Loaded ${iso27001Controls.controls.length} controls from iso27001-controls.json`);
+  }
+} catch (e) {
+  console.warn('[ISO27001] Could not load iso27001-controls.json:', e.message);
+}
+
+function getIso27001ControlsForTheme(theme) {
+  if (!theme || theme === 'all') return iso27001Controls.controls || [];
+  return (iso27001Controls.controls || []).filter(c => c.theme === theme);
+}
+
+function getIso27001ControlIdsByCategory(policyCategory) {
+  const ISO_CATEGORY_MAP = {
+    'Access Control':       ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3','A.8.5'],
+    'Change Management':    ['A.8.32'],
+    'Incident Response':    ['A.5.24','A.5.25','A.5.26','A.5.27','A.5.28'],
+    'Business Continuity':  ['A.5.29','A.5.30','A.8.13','A.8.14'],
+    'Data Protection':      ['A.5.12','A.5.13','A.5.14','A.8.10','A.8.11','A.8.12'],
+    'Privacy':              ['A.5.34'],
+    'Vendor Risk':          ['A.5.19','A.5.20','A.5.21','A.5.22','A.5.23'],
+    'Monitoring':           ['A.8.15','A.8.16','A.8.17'],
+    'Risk Management':      ['A.5.7','A.5.8'],
+    'Logical Access':       ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3'],
+    'Physical Security':    ['A.7.1','A.7.2','A.7.3','A.7.4'],
+    'HR Security':          ['A.6.1','A.6.2','A.6.3','A.6.4','A.6.5'],
+    'Cryptography':         ['A.8.24'],
+    'Network Security':     ['A.8.20','A.8.21','A.8.22','A.8.23'],
+    'Audit Logging':        ['A.8.15','A.8.16'],
+    'Processing Integrity': ['A.8.9','A.8.25','A.8.26','A.8.28','A.8.29'],
+    'Secure Development':   ['A.8.25','A.8.26','A.8.27','A.8.28','A.8.29','A.8.31','A.8.32'],
+    'Asset Management':     ['A.5.9','A.5.10','A.5.11','A.5.12'],
+    'Compliance':           ['A.5.31','A.5.32','A.5.35','A.5.36'],
+  };
+  const key = Object.keys(ISO_CATEGORY_MAP).find(k =>
+    (policyCategory || '').toLowerCase().includes(k.toLowerCase())
+  );
+  return key ? ISO_CATEGORY_MAP[key] : [];
 }
 
 // ── Section metadata ───────────────────────────────────────────────────────
@@ -694,17 +739,29 @@ const POLICY_CATEGORY_TO_SOC2 = {
 };
 
 function resolveFrameworkMapping(policyCategory, fw, onboarding) {
+  const parts = [];
+
   const isSoc2 = fw.toLowerCase().includes('soc');
-  if (!isSoc2 || !onboarding) return fw;
-  const tscScope = parseTscScope(onboarding);
-  const scopeControls = getSoc2ControlsForScope(tscScope).map(c => c.control_id);
-  const categoryKey = Object.keys(POLICY_CATEGORY_TO_SOC2).find(k =>
-    (policyCategory || '').toLowerCase().includes(k.toLowerCase())
-  );
-  if (!categoryKey) return fw;
-  const ids = POLICY_CATEGORY_TO_SOC2[categoryKey].filter(id => scopeControls.includes(id));
-  if (ids.length === 0) return fw;
-  return `${fw} — ${ids.join(', ')}`;
+  if (isSoc2 && onboarding) {
+    const tscScope = parseTscScope(onboarding);
+    const scopeControls = getSoc2ControlsForScope(tscScope).map(c => c.control_id);
+    const categoryKey = Object.keys(POLICY_CATEGORY_TO_SOC2).find(k =>
+      (policyCategory || '').toLowerCase().includes(k.toLowerCase())
+    );
+    if (categoryKey) {
+      const ids = POLICY_CATEGORY_TO_SOC2[categoryKey].filter(id => scopeControls.includes(id));
+      if (ids.length > 0) parts.push(`SOC 2: ${ids.join(', ')}`);
+    }
+  }
+
+  const isIso = fw.toLowerCase().includes('iso');
+  if (isIso) {
+    const isoIds = getIso27001ControlIdsByCategory(policyCategory);
+    if (isoIds.length > 0) parts.push(`ISO 27001: ${isoIds.slice(0, 5).join(', ')}`);
+  }
+
+  if (parts.length === 0) return fw;
+  return `${fw} — ${parts.join(' | ')}`;
 }
 
 function buildControlMappingSection(policies, risks, vendors, frameworkLabels, onboarding) {
@@ -990,9 +1047,14 @@ async function runRiskDiscoveryAgent(onboarding, brief) {
     .join(', ') || 'none';
 
   const isSoc2 = fwV2.toLowerCase().includes('soc');
+  const isIso  = fwV2.toLowerCase().includes('iso');
   const tscScopeControls = isSoc2 ? getSoc2ControlsForScope(tscScope) : [];
   const tscScopeText = isSoc2
     ? `SOC 2 TSC in scope: ${tscScope.join(', ')} (${tscScopeControls.length} controls). Key control areas: ${[...new Set(tscScopeControls.map(c => c.category))].slice(0,8).join('; ')}.`
+    : '';
+  const isoControlCount = isIso ? (iso27001Controls.controls || []).length : 0;
+  const isoText = isIso
+    ? `ISO 27001:2022 in scope: all ${isoControlCount} Annex A controls (A.5–A.8). Themes: Organizational (37), People (8), Physical (14), Technological (34).`
     : '';
 
   if (!getAnthropic()) return getDerivedTopRisks(onboarding);
@@ -1008,7 +1070,7 @@ RTO/RPO targets: ${onboarding.rto_rpo_targets||'not specified'}
 Monitoring: ${monitor} | Devices: ${devices} | OS: ${opSys} | Work model: ${workType}
 Publicly accessible: ${pubAccess} | IR process: ${irProcess} | Critical access (many people): ${critAccess}
 Prod changes peer-reviewed: ${prodChanges} | Security owner: ${secOwner}
-Compliance framework: ${fwV2}${tscScopeText ? `\n${tscScopeText}` : ''}
+Compliance framework: ${fwV2}${tscScopeText ? `\n${tscScopeText}` : ''}${isoText ? `\n${isoText}` : ''}
 Vendors: ${vendorList}
 
 For each risk return a JSON object with these exact fields:
@@ -1080,9 +1142,13 @@ async function runPolicyWriterAgent(policies, brief, onboarding, onBatchComplete
     : (onboarding.framework_selection_v2 || fw || '');
   const tscScope      = parseTscScope(onboarding);
   const isSoc2Fw      = fwV2.toLowerCase().includes('soc');
+  const isIsoFw       = fwV2.toLowerCase().includes('iso');
   const tscScopeControls = isSoc2Fw ? getSoc2ControlsForScope(tscScope) : [];
   const tscScopeText  = isSoc2Fw
     ? `SOC 2 TSC in scope: ${tscScope.join(', ')} — ${tscScopeControls.length} controls. Categories: ${[...new Set(tscScopeControls.map(c => c.category))].join('; ')}.`
+    : '';
+  const isoFwText     = isIsoFw
+    ? `ISO 27001:2022 in scope: all ${(iso27001Controls.controls || []).length} Annex A controls (A.5 Organizational, A.6 People, A.7 Physical, A.8 Technological). Policies must reference applicable Annex A control IDs where relevant.`
     : '';
 
   const vendorList = (Array.isArray(onboarding.vendors) ? onboarding.vendors : [])
@@ -1103,7 +1169,7 @@ Devices used: ${devices} | Operating systems: ${opSystems} | Storage regions: ${
 Data types: ${data} | Classification: ${classif} | Encryption: ${enc}
 Backup: ${backup} | Monitoring / SIEM: ${monitor}
 Compliance frameworks: ${fwV2} | Key risks: ${risks}
-${tscScopeText ? `SOC 2 TSC scope: ${tscScopeText}` : ''}
+${tscScopeText ? `SOC 2 TSC scope: ${tscScopeText}` : ''}${isoFwText ? `\n${isoFwText}` : ''}
 SECURITY POSTURE (use to calibrate control requirements):
 Publicly accessible systems: ${pubAccess} | Prod/test separation: ${prodSep}
 IR process in place: ${irProcess} | Security logs reviewed regularly: ${logsReviewed}
