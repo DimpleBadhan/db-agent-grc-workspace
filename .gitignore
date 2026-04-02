@@ -18,6 +18,10 @@ compliance_inputs/policy_templates/**
 !compliance_inputs/policy_templates/README.md
 compliance_inputs/frameworks/**
 !compliance_inputs/frameworks/**/README.md
+!compliance_inputs/frameworks/soc2/soc2-controls.json
+!compliance_inputs/frameworks/soc2/soc2-evidence.json
+!compliance_inputs/frameworks/iso27001/iso27001-controls.json
+!compliance_inputs/frameworks/iso27001/iso27001-evidence.json
 
 # Environment / secrets — never commit these
 .env

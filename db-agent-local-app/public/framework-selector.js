@@ -247,6 +247,95 @@ function renderFwCardSection(sectionData, form) {
   hiddenV2.value = JSON.stringify(selectedFws);
   section.appendChild(hiddenV2);
 
+  // TSC scope hidden input
+  let selectedTsc = (() => {
+    try {
+      const raw = sectionData.soc2_tsc_scope;
+      if (Array.isArray(raw)) return raw.includes("Security") ? raw : ["Security", ...raw];
+      if (typeof raw === "string" && raw.startsWith("[")) {
+        const parsed = JSON.parse(raw);
+        return parsed.includes("Security") ? parsed : ["Security", ...parsed];
+      }
+    } catch (e) {}
+    return ["Security"];
+  })();
+
+  const hiddenTsc = document.createElement("input");
+  hiddenTsc.type = "hidden";
+  hiddenTsc.dataset.field = "soc2_tsc_scope";
+  hiddenTsc.value = JSON.stringify(selectedTsc);
+  section.appendChild(hiddenTsc);
+
+  // TSC scope section — visible only when SOC 2 is selected
+  const tscDescriptions = {
+    "Security": "Mandatory. Protects against unauthorized access, use, and modification — covers all CC1–CC9 controls (34 controls).",
+    "Availability": "Systems are available for operation as committed. Select if you make uptime or SLA commitments — A1 controls (4 controls).",
+    "Processing Integrity": "System processing is complete, valid, accurate, timely, and authorized — PI1 controls (5 controls).",
+    "Confidentiality": "Information designated as confidential is protected — covers client data, IP, and trade secrets — C1 controls (2 controls).",
+    "Privacy": "Personal information is collected, used, retained, and disposed of per your privacy commitments — P1–P8 controls (18 controls)."
+  };
+
+  const tscSection = document.createElement("div");
+  tscSection.className = "tsc-scope-section";
+  tscSection.style.display = selectedFws.some(f => f.startsWith("SOC 2")) ? "" : "none";
+
+  const tscTitle = document.createElement("h4");
+  tscTitle.textContent = "Step 2: Select your Trust Services Categories (TSC)";
+  const tscNote = document.createElement("p");
+  tscNote.className = "section-note";
+  tscNote.textContent = "Security is mandatory for all SOC 2 engagements. Add additional categories based on your service commitments to customers.";
+  tscSection.appendChild(tscTitle);
+  tscSection.appendChild(tscNote);
+
+  const tscGrid = document.createElement("div");
+  tscGrid.className = "tsc-checkbox-grid";
+
+  ["Security", "Availability", "Processing Integrity", "Confidentiality", "Privacy"].forEach(tsc => {
+    const isMandatory = tsc === "Security";
+    const isChecked = selectedTsc.includes(tsc);
+
+    const row = document.createElement("label");
+    row.className = `tsc-checkbox-row${isMandatory ? " tsc-mandatory" : ""}${isChecked ? " tsc-checked" : ""}`;
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "tsc-checkbox";
+    cb.checked = isChecked;
+    cb.disabled = isMandatory;
+    cb.dataset.tsc = tsc;
+
+    const labelDiv = document.createElement("div");
+    labelDiv.className = "tsc-label-block";
+
+    const labelName = document.createElement("span");
+    labelName.className = "tsc-name";
+    labelName.textContent = tsc + (isMandatory ? " (mandatory)" : "");
+
+    const labelDesc = document.createElement("span");
+    labelDesc.className = "tsc-desc";
+    labelDesc.textContent = tscDescriptions[tsc];
+
+    labelDiv.appendChild(labelName);
+    labelDiv.appendChild(labelDesc);
+    row.appendChild(cb);
+    row.appendChild(labelDiv);
+
+    cb.addEventListener("change", () => {
+      if (cb.checked && !selectedTsc.includes(tsc)) {
+        selectedTsc.push(tsc);
+      } else if (!cb.checked) {
+        const idx = selectedTsc.indexOf(tsc);
+        if (idx !== -1) selectedTsc.splice(idx, 1);
+      }
+      row.classList.toggle("tsc-checked", cb.checked);
+      hiddenTsc.value = JSON.stringify(selectedTsc);
+    });
+
+    tscGrid.appendChild(row);
+  });
+
+  tscSection.appendChild(tscGrid);
+
   // Card grid
   const grid = document.createElement("div");
   grid.className = "fw-card-grid";
@@ -312,6 +401,9 @@ function renderFwCardSection(sectionData, form) {
       hiddenLegacy.value = fwNamesToLegacy(selectedFws);
       hiddenV2.value = JSON.stringify(selectedFws);
 
+      // Show/hide TSC section based on SOC 2 selection
+      tscSection.style.display = selectedFws.some(f => f.startsWith("SOC 2")) ? "" : "none";
+
       // Re-render cards
       grid.querySelectorAll(".fw-card").forEach(c => {
         const id = c.dataset.fwId;
@@ -327,6 +419,7 @@ function renderFwCardSection(sectionData, form) {
   });
 
   section.appendChild(grid);
+  section.appendChild(tscSection);
   section.appendChild(previewArea);
   updatePreview();
 
@@ -557,11 +650,13 @@ function updateTopbarBadge(clientData) {
   const ctx = getActiveContext();
 
   const evLabel = evItems.length > 0 ? `${evItems.length} evidence item${evItems.length !== 1 ? "s" : ""}` : null;
+  const tscLabel = getTscScopeDisplay(onboarding);
 
   slot.className = "fw-topbar-badge";
   slot.innerHTML = `
     <button type="button" class="fw-topbar-btn" id="fw-topbar-trigger" title="Click to review framework settings">
       <span class="fw-topbar-fw">${fwNames.map(n => FRAMEWORK_CONFIG[n]?.short || n).join(", ")}</span>
+      ${tscLabel ? `<span class="fw-topbar-pill fw-topbar-pill-tsc" title="SOC 2 Trust Services Categories in scope">${tscLabel}</span>` : ""}
       <span class="fw-topbar-pill">${ctx.task_scope_count} tasks</span>
       ${evLabel ? `<span class="fw-topbar-pill fw-topbar-pill-ev">${evLabel}</span>` : ""}
     </button>
@@ -722,4 +817,21 @@ function getFwDisplayForOverview(sectionData) {
   const fwNames = parseFwSelection(sectionData.framework_selection_v2 || sectionData.framework_selection);
   if (fwNames.length === 0) return sectionData.framework_selection || "Not selected";
   return fwNames.map(n => FRAMEWORK_CONFIG[n]?.label || n).join(", ");
+}
+
+function getTscScopeDisplay(sectionData) {
+  const hasSoc2 = parseFwSelection(sectionData.framework_selection_v2 || sectionData.framework_selection)
+    .some(n => n.startsWith("SOC 2"));
+  if (!hasSoc2) return null;
+  try {
+    const raw = sectionData.soc2_tsc_scope;
+    let scope = [];
+    if (Array.isArray(raw)) scope = raw;
+    else if (typeof raw === "string" && raw.startsWith("[")) scope = JSON.parse(raw);
+    else if (typeof raw === "string" && raw.trim()) scope = raw.split(",").map(s => s.trim()).filter(Boolean);
+    if (scope.length === 0) scope = ["Security"];
+    return scope.join(", ");
+  } catch (e) {
+    return "Security";
+  }
 }

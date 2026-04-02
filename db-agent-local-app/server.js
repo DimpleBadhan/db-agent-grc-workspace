@@ -34,11 +34,85 @@ const templateCacheRoot = path.join(scriptRoot, 'template-cache', 'policy-templa
 const policyTemplateRoot = path.join(workspaceRoot, 'compliance_inputs', 'policy_templates', 'anthony_new_batch_policies_all_frameworks_combined');
 const configRoot        = path.join(scriptRoot, 'config');
 const promptRoot        = path.join(scriptRoot, 'prompts');
-const vendorCatalogPath = path.join(catalogRoot, 'vendor-catalog.json');
+const vendorCatalogPath   = path.join(catalogRoot, 'vendor-catalog.json');
+const soc2ControlsPath    = path.join(workspaceRoot, 'compliance_inputs', 'frameworks', 'soc2', 'soc2-controls.json');
+const iso27001ControlsPath = path.join(workspaceRoot, 'compliance_inputs', 'frameworks', 'iso27001', 'iso27001-controls.json');
 
 // Ensure directories exist
 for (const dir of [processingRoot, catalogRoot, dataRoot, exportsRoot, auditLogsRoot, frameworkCacheRoot]) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+// ── SOC 2 controls reference data ─────────────────────────────────────────
+let soc2Controls = { controls: [], tsc_categories: {} };
+try {
+  if (fs.existsSync(soc2ControlsPath)) {
+    soc2Controls = JSON.parse(fs.readFileSync(soc2ControlsPath, 'utf8'));
+    console.log(`[SOC2] Loaded ${soc2Controls.controls.length} controls from soc2-controls.json`);
+  }
+} catch (e) {
+  console.warn('[SOC2] Could not load soc2-controls.json:', e.message);
+}
+
+function getSoc2ControlsForScope(tscScope) {
+  const scope = Array.isArray(tscScope) && tscScope.length > 0 ? tscScope : ['Security'];
+  return (soc2Controls.controls || []).filter(c => scope.includes(c.tsc));
+}
+
+function parseTscScope(onboarding) {
+  const raw = onboarding.soc2_tsc_scope;
+  if (Array.isArray(raw) && raw.length > 0) return raw;
+  if (typeof raw === 'string') {
+    if (raw.startsWith('[')) {
+      try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; } catch (e) {}
+    }
+    if (raw.trim()) return raw.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return ['Security'];
+}
+
+// ── ISO 27001:2022 controls reference data ────────────────────────────────
+let iso27001Controls = { controls: [], themes: {} };
+try {
+  if (fs.existsSync(iso27001ControlsPath)) {
+    iso27001Controls = JSON.parse(fs.readFileSync(iso27001ControlsPath, 'utf8'));
+    console.log(`[ISO27001] Loaded ${iso27001Controls.controls.length} controls from iso27001-controls.json`);
+  }
+} catch (e) {
+  console.warn('[ISO27001] Could not load iso27001-controls.json:', e.message);
+}
+
+function getIso27001ControlsForTheme(theme) {
+  if (!theme || theme === 'all') return iso27001Controls.controls || [];
+  return (iso27001Controls.controls || []).filter(c => c.theme === theme);
+}
+
+function getIso27001ControlIdsByCategory(policyCategory) {
+  const ISO_CATEGORY_MAP = {
+    'Access Control':       ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3','A.8.5'],
+    'Change Management':    ['A.8.32'],
+    'Incident Response':    ['A.5.24','A.5.25','A.5.26','A.5.27','A.5.28'],
+    'Business Continuity':  ['A.5.29','A.5.30','A.8.13','A.8.14'],
+    'Data Protection':      ['A.5.12','A.5.13','A.5.14','A.8.10','A.8.11','A.8.12'],
+    'Privacy':              ['A.5.34'],
+    'Vendor Risk':          ['A.5.19','A.5.20','A.5.21','A.5.22','A.5.23'],
+    'Monitoring':           ['A.8.15','A.8.16','A.8.17'],
+    'Risk Management':      ['A.5.7','A.5.8'],
+    'Logical Access':       ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3'],
+    'Physical Security':    ['A.7.1','A.7.2','A.7.3','A.7.4'],
+    'HR Security':          ['A.6.1','A.6.2','A.6.3','A.6.4','A.6.5'],
+    'Cryptography':         ['A.8.24'],
+    'Network Security':     ['A.8.20','A.8.21','A.8.22','A.8.23'],
+    'Audit Logging':        ['A.8.15','A.8.16'],
+    'Processing Integrity': ['A.8.9','A.8.25','A.8.26','A.8.28','A.8.29'],
+    'Secure Development':   ['A.8.25','A.8.26','A.8.27','A.8.28','A.8.29','A.8.31','A.8.32'],
+    'Asset Management':     ['A.5.9','A.5.10','A.5.11','A.5.12'],
+    'Compliance':           ['A.5.31','A.5.32','A.5.35','A.5.36'],
+  };
+  const key = Object.keys(ISO_CATEGORY_MAP).find(k =>
+    (policyCategory || '').toLowerCase().includes(k.toLowerCase())
+  );
+  return key ? ISO_CATEGORY_MAP[key] : [];
 }
 
 // ── Section metadata ───────────────────────────────────────────────────────
@@ -128,8 +202,9 @@ function newDefaultSection(sectionKey, clientId, companyName) {
       work_type: '', company_type: '', industry: '', tech_stack: '', cloud_providers: '',
       storage_regions: '', devices_used: '', operating_systems: '', identity_provider: '',
       mfa_enabled: '', access_model: '', data_types: '', classification: '', encryption: '',
-      backup: '', monitoring: '', top_risks: '', vulnerabilities: '', incidents: '',
-      framework_selection: '', audit_timeline: '', scope: '', client_users: '', client_usernames: '',
+      backup: '', rto_rpo_targets: '', monitoring: '', top_risks: '', vulnerabilities: '', incidents: '',
+      framework_selection: '', framework_selection_v2: '', soc2_tsc_scope: '["Security"]',
+      audit_timeline: '', scope: '', client_users: '', client_usernames: '',
       client_user_records: [], policy_templates: '', iso_27001_framework: '', soc2_framework: '',
       vendors: [], reprocessing_required: '', change_notice: '', downstream_reset_at: '',
       last_processed_at: '', ...base
@@ -644,16 +719,63 @@ function buildVendorQaSection(vendors) {
 }
 
 // ── Control mapping section ────────────────────────────────────────────────
-function buildControlMappingSection(policies, risks, vendors, frameworkLabels) {
+// Category → SOC 2 control IDs lookup (used when SOC 2 is in scope)
+const POLICY_CATEGORY_TO_SOC2 = {
+  'Access Control':          ['CC6.1','CC6.2','CC6.3'],
+  'Change Management':       ['CC8.1'],
+  'Incident Response':       ['CC7.3','CC7.4','CC7.5'],
+  'Business Continuity':     ['A1.2','A1.3','CC9.1'],
+  'Data Protection':         ['CC6.7','C1.1','C1.2'],
+  'Privacy':                 ['P1.1','P2.1','P3.1','P4.1','P5.1','P6.1','P7.1','P8.1'],
+  'Vendor Risk':             ['CC9.2'],
+  'Monitoring':              ['CC7.1','CC7.2'],
+  'Risk Management':         ['CC3.1','CC3.2','CC3.3','CC3.4'],
+  'Logical Access':          ['CC6.1','CC6.2','CC6.3','CC6.4','CC6.5','CC6.6'],
+  'Physical Security':       ['CC6.4'],
+  'HR Security':             ['CC1.4','CC1.5'],
+  'Cryptography':            ['CC6.7'],
+  'Network Security':        ['CC6.6','CC6.8'],
+  'Audit Logging':           ['CC7.1','CC7.2'],
+  'Processing Integrity':    ['PI1.1','PI1.2','PI1.3','PI1.4','PI1.5'],
+};
+
+function resolveFrameworkMapping(policyCategory, fw, onboarding) {
+  const parts = [];
+
+  const isSoc2 = fw.toLowerCase().includes('soc');
+  if (isSoc2 && onboarding) {
+    const tscScope = parseTscScope(onboarding);
+    const scopeControls = getSoc2ControlsForScope(tscScope).map(c => c.control_id);
+    const categoryKey = Object.keys(POLICY_CATEGORY_TO_SOC2).find(k =>
+      (policyCategory || '').toLowerCase().includes(k.toLowerCase())
+    );
+    if (categoryKey) {
+      const ids = POLICY_CATEGORY_TO_SOC2[categoryKey].filter(id => scopeControls.includes(id));
+      if (ids.length > 0) parts.push(`SOC 2: ${ids.join(', ')}`);
+    }
+  }
+
+  const isIso = fw.toLowerCase().includes('iso');
+  if (isIso) {
+    const isoIds = getIso27001ControlIdsByCategory(policyCategory);
+    if (isoIds.length > 0) parts.push(`ISO 27001: ${isoIds.slice(0, 5).join(', ')}`);
+  }
+
+  if (parts.length === 0) return fw;
+  return `${fw} — ${parts.join(' | ')}`;
+}
+
+function buildControlMappingSection(policies, risks, vendors, frameworkLabels, onboarding) {
   const controls = [];
   let ctrlPol = 1, ctrlVdr = 1;
   const fw = (frameworkLabels || ['SOC 2 Trust Services Criteria']).join(', ');
 
   for (const policy of (policies || []).filter(Boolean)) {
+    const fwMapping = resolveFrameworkMapping(policy.category, fw, onboarding);
     const ctrl = {
       control_id: `CTRL-POL-${String(ctrlPol++).padStart(3,'0')}`,
       control_category: policy.category || 'Policy Control',
-      framework_mapping: fw,
+      framework_mapping: fwMapping,
       control_title: `${policy.name} Control`,
       description: `${policy.name} policy requirements are implemented and evidenced per ${fw}.`,
       linked_policies: policy.policy_id,
@@ -683,11 +805,30 @@ function buildControlMappingSection(policies, risks, vendors, frameworkLabels) {
     controls.push(ctrl);
   }
 
+  // Fraud-specific controls — always include per framework requirements
+  const fraudRisks = (risks || []).filter(r => r && String(r.category || '').toLowerCase().includes('fraud'));
+  let ctrlFrd = 1;
+  for (const fr of fraudRisks) {
+    controls.push({
+      control_id: `CTRL-FRD-${String(ctrlFrd++).padStart(3,'0')}`,
+      control_category: 'Fraud Prevention',
+      framework_mapping: fw,
+      control_title: `Fraud Risk Control — ${fr.threat || 'Fraud'}`,
+      description: `Controls to detect, prevent, and respond to fraud risk: ${fr.threat || 'fraud exposure'}. Includes segregation of duties, transaction monitoring, and escalation procedures.`,
+      linked_policies: fr.linked_policies || '',
+      linked_risks: fr.risk_id || '',
+      linked_vendors: '',
+      owner: fr.treatment_owner || '',
+      frequency: 'Quarterly',
+      evidence: `Fraud risk assessment record, transaction monitoring logs, segregation of duties matrix, incident reports, annual fraud awareness training completion.`,
+    });
+  }
+
   return { mapping_basis: fw, evidence_standard: 'Control evidence mapped to policy, risk, and vendor register.', controls, updatedAt: null };
 }
 
 // ── Audit QA section ───────────────────────────────────────────────────────
-function buildAuditQaSection(policies, risks, vendors, controls) {
+function buildAuditQaSection(policies, risks, vendors, controls, onboarding) {
   const findings = [];
   let c = 1;
 
@@ -708,6 +849,32 @@ function buildAuditQaSection(policies, risks, vendors, controls) {
     if (!v.has_dpa || v.has_dpa === 'Not sure') {
       findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: v.vendor_id, entity_type: 'Vendor', severity: 'High', category: 'Contractual', details: `${v.vendor_name} — DPA status unconfirmed.`, resolution_status: 'Open' });
     }
+  }
+  // Check RTO/RPO targets are documented
+  if (onboarding && !String(onboarding.rto_rpo_targets || '').trim()) {
+    findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'ONBOARDING-RTORPO', entity_type: 'Onboarding', severity: 'Medium', category: 'Business Continuity', details: 'RTO and RPO targets have not been documented. Applicable frameworks require defined and validated recovery time and recovery point objectives.', resolution_status: 'Open' });
+  }
+  // Check SOC 2 TSC scope is defined when SOC 2 is selected
+  if (onboarding) {
+    const fwRaw = String(onboarding.framework_selection_v2 || onboarding.framework_selection || '').toLowerCase();
+    const isSoc2Selected = fwRaw.includes('soc');
+    if (isSoc2Selected) {
+      const tscScope = parseTscScope(onboarding);
+      if (!tscScope || tscScope.length === 0) {
+        findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'ONBOARDING-TSC', entity_type: 'Onboarding', severity: 'High', category: 'SOC 2 Scope', details: 'SOC 2 is selected but no Trust Services Categories (TSC) have been defined. Security is mandatory; return to onboarding to confirm your TSC scope.', resolution_status: 'Open' });
+      }
+    }
+  }
+
+  // Check fraud risk is documented (framework requirement)
+  const hasFraudRisk = (risks || []).some(r => r && String(r.category || '').toLowerCase().includes('fraud'));
+  if (!hasFraudRisk) {
+    findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'RISK-FRAUD', entity_type: 'Risk', severity: 'High', category: 'Fraud Assessment', details: 'No fraud risk has been documented in the risk register. Applicable frameworks require at least one fraud risk to be assessed and recorded.', resolution_status: 'Open' });
+  }
+  // Check fraud risk has a mapped control
+  const hasFraudControl = (controls || []).some(ctrl => String(ctrl.control_category || '').toLowerCase().includes('fraud'));
+  if (hasFraudRisk && !hasFraudControl) {
+    findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'CTRL-FRAUD', entity_type: 'Control', severity: 'Medium', category: 'Fraud Assessment', details: 'Fraud risk is documented but no fraud prevention control has been mapped. A fraud-specific control should be added to the control register.', resolution_status: 'Open' });
   }
 
   return {
@@ -839,10 +1006,31 @@ async function buildCompanyBrief(onboarding) {
   const ai = getAnthropic();
   if (!ai) return base;
   const system = 'You are a senior GRC consultant. Read client onboarding data and produce a structured company brief used by downstream AI agents. Be precise and factual. Return ONLY valid JSON — no markdown, no explanation.';
-  const user = `Produce a company brief from this onboarding data. Include: company name, industry, full tech stack, data types handled, compliance frameworks, headcount band, scope, top 3-5 implied key risks, and recommended documentation tone. Onboarding: ${JSON.stringify(onboarding)}`;
+  const user = `Produce a company brief from this onboarding data. Include: company name, industry, full tech stack, data types handled, compliance frameworks, headcount band, scope, top 3-5 implied key risks (always include a fraud risk), RTO/RPO targets if provided, and recommended documentation tone. Onboarding: ${JSON.stringify(onboarding)}`;
   const raw = await invokeClaudeApi(system, user, 2000);
   const result = extractJsonObject(raw);
   return result || base;
+}
+
+function ensureFraudRisk(risks, onboarding) {
+  const hasFraud = (risks || []).some(r => r && String(r.category || '').toLowerCase().includes('fraud'));
+  if (hasFraud) return risks;
+  const co   = onboarding.legal_entity || 'The Organization';
+  const data = onboarding.data_types   || 'company and client data';
+  const fw   = Array.isArray(onboarding.framework_selection_v2)
+    ? onboarding.framework_selection_v2.join(', ')
+    : (onboarding.framework_selection_v2 || onboarding.framework_selection || 'applicable framework');
+  console.log(`[RiskDiscovery] No fraud risk found — injecting mandatory fraud risk for ${co}`);
+  return [...(risks || []), {
+    title: `Fraud risk — misappropriation, invoice fraud, or identity fraud affecting ${co}`,
+    category: 'Fraud',
+    threat_source: 'Internal personnel, compromised accounts, or external fraudsters targeting ${co} operations',
+    why_this_company: `${co} handles ${data} and conducts financial and operational activity that could be exploited through fraudulent transactions, social engineering, or insider misuse. ${fw} requires fraud risk to be assessed and documented.`,
+    likelihood: 2,
+    impact: 4,
+    likelihood_justification: `Controls and oversight reduce likelihood, but fraud risk exists in any organisation handling sensitive data and financial transactions.`,
+    impact_justification: `Fraud incidents can result in direct financial loss, regulatory sanction, reputational damage, and loss of client trust for ${co}.`,
+  }];
 }
 
 async function runRiskDiscoveryAgent(onboarding, brief) {
@@ -860,6 +1048,7 @@ async function runRiskDiscoveryAgent(onboarding, brief) {
   const fwV2     = Array.isArray(onboarding.framework_selection_v2)
     ? onboarding.framework_selection_v2.join(', ')
     : (onboarding.framework_selection_v2 || onboarding.framework_selection || '');
+  const tscScope    = parseTscScope(onboarding);
   const pubAccess   = onboarding.publicly_accessible        || '';
   const irProcess   = onboarding.incident_response_process  || '';
   const critAccess  = onboarding.critical_access_many       || '';
@@ -870,6 +1059,17 @@ async function runRiskDiscoveryAgent(onboarding, brief) {
     .map(v => `${v.vendor_name} (data: ${v.data_types_handled||'unspecified'}; access: ${v.access_level_detail||'unspecified'})`)
     .join(', ') || 'none';
 
+  const isSoc2 = fwV2.toLowerCase().includes('soc');
+  const isIso  = fwV2.toLowerCase().includes('iso');
+  const tscScopeControls = isSoc2 ? getSoc2ControlsForScope(tscScope) : [];
+  const tscScopeText = isSoc2
+    ? `SOC 2 TSC in scope: ${tscScope.join(', ')} (${tscScopeControls.length} controls). Key control areas: ${[...new Set(tscScopeControls.map(c => c.category))].slice(0,8).join('; ')}.`
+    : '';
+  const isoControlCount = isIso ? (iso27001Controls.controls || []).length : 0;
+  const isoText = isIso
+    ? `ISO 27001:2022 in scope: all ${isoControlCount} Annex A controls (A.5–A.8). Themes: Organizational (37), People (8), Physical (14), Technological (34).`
+    : '';
+
   if (!getAnthropic()) return getDerivedTopRisks(onboarding);
 
   const system = `You are a senior GRC risk analyst. Analyse this company's onboarding profile and identify their real, specific security and compliance risks. Return ONLY a valid JSON array. No markdown, no explanation.`;
@@ -879,16 +1079,17 @@ async function runRiskDiscoveryAgent(onboarding, brief) {
 COMPANY PROFILE:
 Company: ${co} | Cloud: ${cloud} | Identity: ${idp} | MFA: ${onboarding.mfa_enabled||''} | Access model: ${onboarding.access_model||''}
 Data types: ${data} | Classification: ${classif} | Encryption: ${enc} | Backup: ${backup}
+RTO/RPO targets: ${onboarding.rto_rpo_targets||'not specified'}
 Monitoring: ${monitor} | Devices: ${devices} | OS: ${opSys} | Work model: ${workType}
 Publicly accessible: ${pubAccess} | IR process: ${irProcess} | Critical access (many people): ${critAccess}
 Prod changes peer-reviewed: ${prodChanges} | Security owner: ${secOwner}
-Compliance framework: ${fwV2}
+Compliance framework: ${fwV2}${tscScopeText ? `\n${tscScopeText}` : ''}${isoText ? `\n${isoText}` : ''}
 Vendors: ${vendorList}
 
 For each risk return a JSON object with these exact fields:
 {
   "title": "short specific risk title referencing actual ${co} context",
-  "category": "one of: Data Protection | Access Control | Vendor Risk | Infrastructure | Incident Response | Business Continuity | Change Management | Compliance",
+  "category": "one of: Data Protection | Access Control | Vendor Risk | Infrastructure | Incident Response | Business Continuity | Change Management | Compliance | Fraud",
   "threat_source": "specific threat actor or cause relevant to ${co}",
   "why_this_company": "1-2 sentences explaining why THIS company specifically faces this risk — reference actual tools, data types, vendors",
   "likelihood": number 1-5,
@@ -901,16 +1102,18 @@ Rules:
 - Every risk must reference ${co}'s actual environment — name tools, data types, vendors
 - Do NOT use generic titles like "Data Breach" — be specific e.g. "Client PII exposure via AWS S3 misconfiguration"
 - Cover a range of categories — do not duplicate categories
-- Calibrate likelihood/impact based on actual posture (e.g. if IR process exists, lower likelihood of undetected breach)`;
+- Calibrate likelihood/impact based on actual posture (e.g. if IR process exists, lower likelihood of undetected breach)
+- MANDATORY: At least one risk must have category "Fraud" — this is a framework requirement. The fraud risk must be specific to ${co}'s business model, data types, and financial/operational exposure (e.g. payment fraud, invoice fraud, insider misappropriation, identity fraud against clients)`;
 
   const raw = await invokeClaudeApi(system, user, 6000);
   const result = extractJsonArray(raw);
   if (!result || result.length === 0) {
     console.log('[RiskDiscovery] AI returned no results, using derived risks');
-    return getDerivedTopRisks(onboarding);
+    return ensureFraudRisk(getDerivedTopRisks(onboarding), onboarding);
   }
-  console.log(`[RiskDiscovery] Generated ${result.length} company-specific risks for ${co}`);
-  return result;
+  const withFraud = ensureFraudRisk(result, onboarding);
+  console.log(`[RiskDiscovery] Generated ${withFraud.length} company-specific risks for ${co} (fraud risk guaranteed)`);
+  return withFraud;
 }
 
 async function runPolicyWriterAgent(policies, brief, onboarding, onBatchComplete) {
@@ -950,6 +1153,16 @@ async function runPolicyWriterAgent(policies, brief, onboarding, onBatchComplete
   const fwV2          = Array.isArray(onboarding.framework_selection_v2)
     ? onboarding.framework_selection_v2.join(', ')
     : (onboarding.framework_selection_v2 || fw || '');
+  const tscScope      = parseTscScope(onboarding);
+  const isSoc2Fw      = fwV2.toLowerCase().includes('soc');
+  const isIsoFw       = fwV2.toLowerCase().includes('iso');
+  const tscScopeControls = isSoc2Fw ? getSoc2ControlsForScope(tscScope) : [];
+  const tscScopeText  = isSoc2Fw
+    ? `SOC 2 TSC in scope: ${tscScope.join(', ')} — ${tscScopeControls.length} controls. Categories: ${[...new Set(tscScopeControls.map(c => c.category))].join('; ')}.`
+    : '';
+  const isoFwText     = isIsoFw
+    ? `ISO 27001:2022 in scope: all ${(iso27001Controls.controls || []).length} Annex A controls (A.5 Organizational, A.6 People, A.7 Physical, A.8 Technological). Policies must reference applicable Annex A control IDs where relevant.`
+    : '';
 
   const vendorList = (Array.isArray(onboarding.vendors) ? onboarding.vendors : [])
     .filter(v => v && v.vendor_name)
@@ -969,7 +1182,7 @@ Devices used: ${devices} | Operating systems: ${opSystems} | Storage regions: ${
 Data types: ${data} | Classification: ${classif} | Encryption: ${enc}
 Backup: ${backup} | Monitoring / SIEM: ${monitor}
 Compliance frameworks: ${fwV2} | Key risks: ${risks}
-
+${tscScopeText ? `SOC 2 TSC scope: ${tscScopeText}` : ''}${isoFwText ? `\n${isoFwText}` : ''}
 SECURITY POSTURE (use to calibrate control requirements):
 Publicly accessible systems: ${pubAccess} | Prod/test separation: ${prodSep}
 IR process in place: ${irProcess} | Security logs reviewed regularly: ${logsReviewed}
@@ -1150,7 +1363,7 @@ async function runVendorAnalystAgent(vendors, policies, risks, brief, onboarding
 Legal entity: ${co} | Industry: ${industry} | Headcount: ${headcount}
 Cloud: ${cloud} | Regions: ${regions} | IdP: ${idp} | MFA: ${mfa}
 Data: ${data} | Classification: ${classif} | Encryption: ${enc}
-Backup: ${backup} | SIEM: ${monitor} | Framework: ${framework}
+Backup: ${backup} | RTO/RPO: ${onboarding.rto_rpo_targets||'not specified'} | SIEM: ${monitor} | Framework: ${framework}
 Security owner: ${secOwner}
 Business: ${biz}
 
@@ -1355,15 +1568,66 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
   }
 }
 
+// ── Evidence tracker seeding ───────────────────────────────────────────────
+function buildEvidenceTrackerItems(onboarding) {
+  const items = [];
+  const fwRaw = String(onboarding.framework_selection_v2 || onboarding.framework_selection || '').toLowerCase();
+  const isSoc2 = fwRaw.includes('soc');
+  const isIso  = fwRaw.includes('iso');
+
+  if (isSoc2) {
+    const tscScope = parseTscScope(onboarding);
+    const controls = getSoc2ControlsForScope(tscScope);
+    for (const ctrl of controls) {
+      items.push({
+        evidence_id:       `EV-SOC2-${ctrl.control_id.replace(/\./g, '')}`,
+        framework:         'SOC 2',
+        control_id:        ctrl.control_id,
+        control_name:      ctrl.control_name,
+        tsc:               ctrl.tsc,
+        suggested_owner:   ctrl.suggested_owner || '',
+        frequency:         ctrl.typical_frequency || '',
+        required_evidence: ctrl.required_evidence || '',
+        status:            'Not Started',
+        evidence_location: '',
+        collection_date:   '',
+        deviations_notes:  '',
+      });
+    }
+  }
+
+  if (isIso) {
+    for (const ctrl of (iso27001Controls.controls || [])) {
+      items.push({
+        evidence_id:       `EV-ISO-${ctrl.control_id.replace(/\./g, '')}`,
+        framework:         'ISO 27001:2022',
+        control_id:        ctrl.control_id,
+        control_name:      ctrl.control_name,
+        theme:             ctrl.theme,
+        suggested_owner:   ctrl.suggested_owner || '',
+        frequency:         ctrl.typical_frequency || '',
+        required_evidence: ctrl.required_evidence || '',
+        status:            'Not Started',
+        evidence_location: '',
+        collection_date:   '',
+        deviations_notes:  '',
+      });
+    }
+  }
+
+  return items;
+}
+
 async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brief, paths) {
   // Risks
-  let ra = buildRiskAssessmentSection(onboarding, topRisks, policies);
+  let ra = buildRiskAssessmentSection(onboarding, ensureFraudRisk(topRisks, onboarding), policies);
   if (process.env.ANTHROPIC_API_KEY) {
     const withPlans = await runTreatmentPlanAgent(ra.risks, onboarding, policies, []);
     if (withPlans && withPlans.length > 0) ra.risks = withPlans;
     const aiRisks = await runRiskAnalystAgent(ra.risks, policies, brief, onboarding);
     if (aiRisks && aiRisks.length > 0) ra.risks = aiRisks;
   }
+  ra.risks = ensureFraudRisk(ra.risks, onboarding);
   saveJson(paths['risk-assessment'].file, ra);
   saveJson(paths['risk-qa'].file, buildRiskQaSection(ra.risks));
 
@@ -1379,10 +1643,19 @@ async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brie
 
   // Controls + Audit
   const fw = getFrameworkLabels(onboarding);
-  const cm = buildControlMappingSection(policies, ra.risks, vr.vendors, fw);
+  const cm = buildControlMappingSection(policies, ra.risks, vr.vendors, fw, onboarding);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls, onboarding);
   saveJson(paths['audit-qa'].file, aq);
+
+  // Evidence tracker — seed with framework-specific items if not already populated
+  const evPath = paths['evidence-tracker'].file;
+  const existingEv = readJson(evPath, newDefaultSection('evidence-tracker', clientId, clientId));
+  if (!existingEv.evidence_items || existingEv.evidence_items.length === 0) {
+    existingEv.evidence_items = buildEvidenceTrackerItems(onboarding);
+    saveJson(evPath, existingEv);
+    console.log(`[EvidenceTracker] Seeded ${existingEv.evidence_items.length} items for ${clientId}`);
+  }
 
   // Output
   const output = buildOutputSection(policies, ra.risks, vr.vendors, cm.controls, aq.findings);
@@ -1432,9 +1705,9 @@ async function runSelectiveVendorRegeneration(clientId) {
 
   // Regenerate controls + audit after vendor update
   const fw = getFrameworkLabels(onboarding);
-  const cm = buildControlMappingSection(policies, risks, vr.vendors, fw);
+  const cm = buildControlMappingSection(policies, risks, vr.vendors, fw, onboarding);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(policies, risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(policies, risks, vr.vendors, cm.controls, onboarding);
   saveJson(paths['audit-qa'].file, aq);
   console.log(`[vendors-worker] Generated ${vr.vendors.length} vendors for ${clientId}`);
 }
@@ -1494,9 +1767,9 @@ if (taskArg && workerTasks.includes(taskArg) && clientArg) {
         const ra = readJson(paths['risk-assessment'].file, { risks: [] });
         const vr = readJson(paths['vendor-risk'].file, { vendors: [] });
         const fw = getFrameworkLabels(ob);
-        const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw);
+        const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw, ob);
         saveJson(paths['control-mapping'].file, cm);
-        const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls);
+        const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
         saveJson(paths['audit-qa'].file, aq);
         console.log(`[controls-worker] Generated ${cm.controls.length} controls for ${clientArg}`);
       }
@@ -1750,9 +2023,9 @@ app.post('/api/clients/:id/process-controls', (req, res) => {
   const ra = readJson(paths['risk-assessment'].file, { risks: [] });
   const vr = readJson(paths['vendor-risk'].file, { vendors: [] });
   const fw = getFrameworkLabels(ob);
-  const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw);
+  const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw, ob);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
   saveJson(paths['audit-qa'].file, aq);
   res.json(getClientAggregate(clientId));
 });
@@ -1761,11 +2034,12 @@ app.post('/api/clients/:id/process-controls', (req, res) => {
 app.post('/api/clients/:id/process-audit', (req, res) => {
   const clientId = decodeURIComponent(req.params.id);
   const paths = getSectionPaths(clientId);
+  const ob = readJson(paths.onboarding.file, {});
   const pg = readJson(paths['policy-generation'].file, { policies: [] });
   const ra = readJson(paths['risk-assessment'].file, { risks: [] });
   const vr = readJson(paths['vendor-risk'].file, { vendors: [] });
   const cm = readJson(paths['control-mapping'].file, { controls: [] });
-  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls);
+  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
   saveJson(paths['audit-qa'].file, aq);
   res.json(getClientAggregate(clientId));
 });

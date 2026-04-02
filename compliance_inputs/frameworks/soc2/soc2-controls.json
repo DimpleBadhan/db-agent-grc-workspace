@@ -1,0 +1,581 @@
+{
+  "framework": "SOC 2 Type II",
+  "version": "2017 Trust Services Criteria (Revised Points of Focus 2022)",
+  "total_controls": 63,
+  "tsc_categories": {
+    "Security": { "prefix": ["CC1","CC2","CC3","CC4","CC5","CC6","CC7","CC8","CC9"], "required": true, "count": 34 },
+    "Availability": { "prefix": ["A1"], "required": false, "count": 4 },
+    "Processing Integrity": { "prefix": ["PI1"], "required": false, "count": 5 },
+    "Confidentiality": { "prefix": ["C1"], "required": false, "count": 2 },
+    "Privacy": { "prefix": ["P1","P2","P3","P4","P5","P6","P7","P8"], "required": false, "count": 18 }
+  },
+  "controls": [
+    {
+      "control_id": "CC1.1", "category": "CC1 - Control Environment", "tsc": "Security",
+      "control_name": "Commitment to Integrity and Ethical Values",
+      "description": "The entity demonstrates a commitment to integrity and ethical values through organizational standards, policies, and practices that guide behavior.",
+      "control_type": "Preventive", "typical_frequency": "Annual", "suggested_owner": "CISO / Head of HR",
+      "required_evidence": "Code of conduct/ethics policy; Annual employee acknowledgment records; Disciplinary action procedures and records; Ethics hotline/whistleblower mechanism documentation; Board or committee oversight of ethics program",
+      "auditor_test_procedure": "Inspect: Code of conduct with current review date. Inspect: Sample of 25 employee acknowledgments. Inquire: HR on disciplinary process.",
+      "iso_27001_mapping": ["A.5.1","A.6.2"], "nist_csf_mapping": ["GV.OC-01","GV.OC-03"]
+    },
+    {
+      "control_id": "CC1.2", "category": "CC1 - Control Environment", "tsc": "Security",
+      "control_name": "Board Independence and Oversight",
+      "description": "The board of directors demonstrates independence from management and exercises oversight of the development and performance of internal controls.",
+      "control_type": "Detective", "typical_frequency": "Quarterly", "suggested_owner": "Board / Audit Committee",
+      "required_evidence": "Board/committee charter; Board meeting minutes with security discussion; Board member independence disclosures; Security metrics actually presented to board (deck/report); Audit committee reports",
+      "auditor_test_procedure": "Inspect: Board minutes from each quarter. Inspect: Security metrics report presented. Inquire: CISO on board reporting cadence.",
+      "iso_27001_mapping": ["A.5.1"], "nist_csf_mapping": ["GV.OV-01","GV.OV-02","GV.OV-03"]
+    },
+    {
+      "control_id": "CC1.3", "category": "CC1 - Control Environment", "tsc": "Security",
+      "control_name": "Management Establishes Structure, Authority, and Responsibility",
+      "description": "Management establishes, with board oversight, structures, reporting lines, and appropriate authorities and responsibilities in the pursuit of objectives.",
+      "control_type": "Preventive", "typical_frequency": "Annual", "suggested_owner": "CISO / CEO",
+      "required_evidence": "Organizational chart with security reporting lines; RACI matrix for security functions; CISO/security leadership job descriptions; Documented delegation of authority; Security team structure documentation",
+      "auditor_test_procedure": "Inspect: Org chart showing CISO reporting line. Inspect: RACI matrix. Inspect: CISO job description.",
+      "iso_27001_mapping": ["A.5.2","A.5.3"], "nist_csf_mapping": ["GV.RR-01","GV.RR-02"]
+    },
+    {
+      "control_id": "CC1.4", "category": "CC1 - Control Environment", "tsc": "Security",
+      "control_name": "Commitment to Competence",
+      "description": "The entity demonstrates a commitment to attract, develop, and retain competent individuals in alignment with objectives.",
+      "control_type": "Preventive", "typical_frequency": "Annual", "suggested_owner": "CISO / Head of HR",
+      "required_evidence": "Job descriptions with security requirements; Background check policy and completion records; Security training program with 100% completion tracking; Performance evaluations referencing security; Professional development records; Onboarding training evidence",
+      "auditor_test_procedure": "Inspect: Background check records for sample of hires. Inspect: Training completion report. Inspect: Sample job descriptions.",
+      "iso_27001_mapping": ["A.6.3","A.6.1"], "nist_csf_mapping": ["GV.RR-04"]
+    },
+    {
+      "control_id": "CC1.5", "category": "CC1 - Control Environment", "tsc": "Security",
+      "control_name": "Enforces Accountability",
+      "description": "The entity holds individuals accountable for their internal control responsibilities in the pursuit of objectives.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "CISO / Head of HR",
+      "required_evidence": "Performance reviews referencing security; Documented consequences for violations; Security KPIs assigned to individuals; Incident accountability documentation; Signed acknowledgment forms; Disciplinary action evidence",
+      "auditor_test_procedure": "Inspect: Sample performance reviews. Inspect: Violation records and outcomes. Inquire: HR on accountability enforcement.",
+      "iso_27001_mapping": ["A.5.4","A.6.4"], "nist_csf_mapping": ["GV.RR-01","GV.RR-03"]
+    },
+    {
+      "control_id": "CC2.1", "category": "CC2 - Communication and Information", "tsc": "Security",
+      "control_name": "Uses Relevant Information",
+      "description": "The entity obtains or generates and uses relevant, quality information to support the functioning of internal controls.",
+      "control_type": "Detective", "typical_frequency": "Continuous", "suggested_owner": "CISO / IT Security",
+      "required_evidence": "Information classification policy; Data inventory and data flow diagrams; Security information sources (threat intel, vulnerability databases); SIEM/security dashboard configurations; Log management and retention policy",
+      "auditor_test_procedure": "Inspect: Data flow diagrams. Inspect: SIEM dashboard config. Inspect: Log retention settings. Inquire: IT on threat intel sources.",
+      "iso_27001_mapping": ["A.5.12","A.5.13"], "nist_csf_mapping": ["ID.AM-01","ID.AM-02","ID.AM-05"]
+    },
+    {
+      "control_id": "CC2.2", "category": "CC2 - Communication and Information", "tsc": "Security",
+      "control_name": "Internal Communication",
+      "description": "The entity internally communicates information, including objectives and responsibilities for internal control, necessary to support the functioning of internal controls.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "GRC / Security Awareness Lead",
+      "required_evidence": "Security awareness training materials and completion records; Internal security communications; Policy distribution with acknowledgment logs; Onboarding training completion records; Incident communication procedures and templates",
+      "auditor_test_procedure": "Inspect: Training completion report. Inspect: Internal security communications. Inspect: Policy acknowledgment records for new hires.",
+      "iso_27001_mapping": ["A.6.3","A.5.1"], "nist_csf_mapping": ["GV.PO-01","GV.PO-02"]
+    },
+    {
+      "control_id": "CC2.3", "category": "CC2 - Communication and Information", "tsc": "Security",
+      "control_name": "External Communication",
+      "description": "The entity communicates with external parties regarding matters affecting the functioning of internal controls.",
+      "control_type": "Preventive", "typical_frequency": "As needed", "suggested_owner": "CISO / GRC Lead",
+      "required_evidence": "External Trust Center or security page; Customer security notification procedures; Vendor/partner security communication; Regulatory notification procedures; Breach notification policy with timelines; NDA templates; SOC 2 report distribution process",
+      "auditor_test_procedure": "Inspect: Trust Center content. Inspect: Breach notification templates. Inspect: NDA templates. Inquire: On customer communication process.",
+      "iso_27001_mapping": ["A.5.5","A.5.6"], "nist_csf_mapping": ["GV.SC-01","GV.SC-02"]
+    },
+    {
+      "control_id": "CC3.1", "category": "CC3 - Risk Assessment", "tsc": "Security",
+      "control_name": "Specifies Suitable Objectives",
+      "description": "The entity specifies objectives with sufficient clarity to enable the identification and assessment of risks relating to objectives.",
+      "control_type": "Preventive", "typical_frequency": "Annual", "suggested_owner": "CISO",
+      "required_evidence": "Documented security objectives; Information security policy stating objectives; Risk appetite and tolerance statements; SLAs defining security commitments; Annual security strategy/roadmap",
+      "auditor_test_procedure": "Inspect: Security policy with objectives. Inspect: Risk appetite statement. Inspect: Security roadmap.",
+      "iso_27001_mapping": ["A.5.1","A.5.8"], "nist_csf_mapping": ["GV.OC-01","GV.RM-01"]
+    },
+    {
+      "control_id": "CC3.2", "category": "CC3 - Risk Assessment", "tsc": "Security",
+      "control_name": "Identifies and Analyzes Risk",
+      "description": "The entity identifies risks to the achievement of its objectives and analyzes risks as a basis for determining how they should be managed.",
+      "control_type": "Detective", "typical_frequency": "Annual + Continuous", "suggested_owner": "GRC Lead",
+      "required_evidence": "Formal risk assessment report (annual); Risk register with likelihood, impact, owners, treatment plans; Threat modeling documentation; Vulnerability assessment reports; Risk assessment methodology",
+      "auditor_test_procedure": "Inspect: Annual risk assessment. Inspect: Risk register. Inspect: Scoring methodology. Reperform: Verify ratings for sample of 5 risks.",
+      "iso_27001_mapping": ["A.5.9","A.8.2","A.8.3"], "nist_csf_mapping": ["ID.RA-01","ID.RA-02","ID.RA-03"]
+    },
+    {
+      "control_id": "CC3.3", "category": "CC3 - Risk Assessment", "tsc": "Security",
+      "control_name": "Assesses Fraud Risk",
+      "description": "The entity considers the potential for fraud in assessing risks to the achievement of objectives.",
+      "control_type": "Detective", "typical_frequency": "Annual", "suggested_owner": "GRC Lead / CISO",
+      "required_evidence": "Fraud risk assessment; Anti-fraud policy; Segregation of duties (SoD) matrix; Whistleblower mechanism; Management override controls and testing evidence; SoD enforcement evidence; SoD conflict reports",
+      "auditor_test_procedure": "Inspect: Fraud risk assessment. Inspect: SoD matrix. Reperform: Verify SoD for sample of 5 privileged users. Inspect: Whistleblower mechanism.",
+      "iso_27001_mapping": ["A.5.3","A.8.2"], "nist_csf_mapping": ["ID.RA-01","ID.RA-02"]
+    },
+    {
+      "control_id": "CC3.4", "category": "CC3 - Risk Assessment", "tsc": "Security",
+      "control_name": "Identifies and Analyzes Significant Change",
+      "description": "The entity identifies and assesses changes that could significantly impact the system of internal control.",
+      "control_type": "Detective", "typical_frequency": "Continuous", "suggested_owner": "GRC Lead",
+      "required_evidence": "Change impact assessment procedures; New vendor/system/regulation risk evaluation process; M&A security assessment procedures; Regulatory change monitoring; Risk reassessment evidence triggered by changes",
+      "auditor_test_procedure": "Inspect: Change impact procedure. Inspect: Risk reassessment evidence during audit period. Inquire: On regulatory change monitoring.",
+      "iso_27001_mapping": ["A.5.8"], "nist_csf_mapping": ["ID.IM-01","ID.IM-02"]
+    },
+    {
+      "control_id": "CC4.1", "category": "CC4 - Monitoring Activities", "tsc": "Security",
+      "control_name": "Ongoing and Separate Evaluations",
+      "description": "The entity selects, develops, and performs ongoing and/or separate evaluations to ascertain whether the components of internal control are present and functioning.",
+      "control_type": "Detective", "typical_frequency": "Continuous + Quarterly", "suggested_owner": "GRC Lead / Internal Audit",
+      "required_evidence": "Continuous monitoring configurations (SIEM, GRC dashboards); Internal audit reports and schedules; Control self-assessment results; Penetration testing reports (annual); Automated compliance monitoring evidence; Quarterly control effectiveness reviews",
+      "auditor_test_procedure": "Inspect: SIEM monitoring config. Inspect: Pen test report. Inspect: Compliance monitoring dashboard. Inspect: Internal audit reports.",
+      "iso_27001_mapping": ["A.5.35","A.5.36"], "nist_csf_mapping": ["ID.RA-04","ID.IM-01"]
+    },
+    {
+      "control_id": "CC4.2", "category": "CC4 - Monitoring Activities", "tsc": "Security",
+      "control_name": "Evaluates and Communicates Deficiencies",
+      "description": "The entity evaluates and communicates internal control deficiencies in a timely manner to those parties responsible for taking corrective action.",
+      "control_type": "Corrective", "typical_frequency": "Continuous", "suggested_owner": "GRC Lead",
+      "required_evidence": "Deficiency tracking log with timelines and owners; Management reporting on deficiencies; Audit finding remediation tracking; Escalation procedures for critical deficiencies; Corrective action completion evidence",
+      "auditor_test_procedure": "Inspect: Deficiency tracking log. Inspect: Executive review and sign-off. Inspect: Sample of 5 closed deficiencies.",
+      "iso_27001_mapping": ["A.5.36","A.5.5"], "nist_csf_mapping": ["ID.IM-02","ID.IM-04"]
+    },
+    {
+      "control_id": "CC5.1", "category": "CC5 - Control Activities", "tsc": "Security",
+      "control_name": "Selects and Develops Control Activities",
+      "description": "The entity selects and develops control activities that contribute to the mitigation of risks to acceptable levels.",
+      "control_type": "Preventive", "typical_frequency": "Annual", "suggested_owner": "CISO / GRC Lead",
+      "required_evidence": "Control-to-risk mapping; Control design documentation (preventive/detective mix); ITGC documentation; Application control documentation; Control selection rationale",
+      "auditor_test_procedure": "Inspect: Control-to-risk mapping. Inspect: ITGC documentation. Inquire: On control selection rationale for top 5 risks.",
+      "iso_27001_mapping": ["A.5.1","A.8.1"], "nist_csf_mapping": ["PR.AA-01","PR.IR-01"]
+    },
+    {
+      "control_id": "CC5.2", "category": "CC5 - Control Activities", "tsc": "Security",
+      "control_name": "General Controls over Technology",
+      "description": "The entity selects and develops general control activities over technology to support the achievement of objectives.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "IT / Infrastructure",
+      "required_evidence": "Infrastructure security configurations; Network architecture diagrams; EDR deployment evidence (100% coverage); Database security configs; CSPM scan results with remediation; WAF configurations; Firewall rule reviews",
+      "auditor_test_procedure": "Inspect: Network architecture. Inspect: EDR deployment status. Inspect: CSPM compliance report. Inspect: Firewall/WAF configs.",
+      "iso_27001_mapping": ["A.8.1","A.8.9","A.8.20"], "nist_csf_mapping": ["PR.IR-01","PR.IR-02"]
+    },
+    {
+      "control_id": "CC5.3", "category": "CC5 - Control Activities", "tsc": "Security",
+      "control_name": "Deploys Through Policies and Procedures",
+      "description": "The entity deploys control activities through policies that establish what is expected and in procedures that put policies into action.",
+      "control_type": "Preventive", "typical_frequency": "Annual", "suggested_owner": "GRC Lead",
+      "required_evidence": "Complete policy library with version control, review dates, and approval signatures; Annual review evidence; Employee acknowledgment records; Procedure documents; Policy exception register",
+      "auditor_test_procedure": "Inspect: Policy register with review dates/approvers. Inspect: Sample of 10 employee acknowledgments. Inspect: Exception register.",
+      "iso_27001_mapping": ["A.5.1","A.5.10"], "nist_csf_mapping": ["PR.AT-01","PR.AT-02"]
+    },
+    {
+      "control_id": "CC6.1", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "Logical Access Security",
+      "description": "The entity implements logical access security software, infrastructure, and architectures over protected information assets.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "IT / Identity Management",
+      "required_evidence": "SSO configuration evidence; MFA enforcement (all accounts); Firewall rules and network segmentation; WAF configurations; VPN configs for remote access; IdP Conditional Access policies",
+      "auditor_test_procedure": "Inspect: SSO config. Inspect: MFA policy. Inspect: Firewall/security group rules. Observe: Conditional Access policies.",
+      "iso_27001_mapping": ["A.5.15","A.8.5","A.8.20"], "nist_csf_mapping": ["PR.AA-01","PR.AA-02","PR.AA-03"]
+    },
+    {
+      "control_id": "CC6.2", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "User Registration and Authorization",
+      "description": "Prior to issuing system credentials, the entity registers and authorizes new internal and external users.",
+      "control_type": "Preventive", "typical_frequency": "Per event", "suggested_owner": "IT / Identity Management",
+      "required_evidence": "Provisioning workflow documentation; Access request and manager approval evidence; Background check confirmation before account creation; Onboarding checklist; Automated provisioning configs (SCIM)",
+      "auditor_test_procedure": "Inspect: Provisioning workflow. Inspect: Sample of 25 new hires showing approval before account creation. Reperform: Verify creation date vs. clearance.",
+      "iso_27001_mapping": ["A.5.16","A.5.17"], "nist_csf_mapping": ["PR.AA-01","PR.AA-02"]
+    },
+    {
+      "control_id": "CC6.3", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "Role-Based Access and Least Privilege",
+      "description": "The entity authorizes, modifies, or removes access based on roles, responsibilities, or system design.",
+      "control_type": "Preventive", "typical_frequency": "Continuous + Quarterly review", "suggested_owner": "IT / Identity Management",
+      "required_evidence": "RBAC matrix; Least privilege enforcement evidence; Role definitions mapped to job functions; Access modification tickets; PAM tool configurations; Privileged access register (quarterly review); Quarterly access review reports",
+      "auditor_test_procedure": "Inspect: RBAC matrix. Inspect: Quarterly access reviews. Inspect: Privileged access register. Reperform: Verify access for sample of 25 users.",
+      "iso_27001_mapping": ["A.5.15","A.5.18","A.8.2"], "nist_csf_mapping": ["PR.AA-01","PR.AA-05"]
+    },
+    {
+      "control_id": "CC6.4", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "Physical Access Restrictions",
+      "description": "The entity restricts physical access to facilities and protected information assets to authorized personnel.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "Facilities / IT",
+      "required_evidence": "Badge reader configurations; Visitor management logs; Data center access procedures/logs; Surveillance documentation; Clean desk policy; Cloud provider SOC 2 for data center physical security",
+      "auditor_test_procedure": "Inspect: Badge access logs. Inspect: Visitor logs. Inspect: Cloud provider SOC 2 physical section. Observe: Physical controls.",
+      "iso_27001_mapping": ["A.7.1","A.7.2","A.7.3","A.7.4"], "nist_csf_mapping": ["PR.AA-04"]
+    },
+    {
+      "control_id": "CC6.5", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "Logical Access Disposal and Revocation",
+      "description": "The entity discontinues logical and physical protections only after the ability to protect information is no longer needed.",
+      "control_type": "Preventive", "typical_frequency": "Per event + Quarterly review", "suggested_owner": "IT / Identity Management",
+      "required_evidence": "Offboarding checklist with full access revocation; Timely removal evidence (within 24 hours for terminations); Access modification for role changes (movers); Automated deprovisioning; Quarterly access review removing stale accounts; Terminated user audit logs",
+      "auditor_test_procedure": "Inspect: All terminations — verify disable within 24 hours. Inspect: Role changes — verify old permissions removed. Inspect: Quarterly reviews. Reperform: Check for active terminated accounts.",
+      "iso_27001_mapping": ["A.5.18","A.6.5"], "nist_csf_mapping": ["PR.AA-01","PR.AA-06"]
+    },
+    {
+      "control_id": "CC6.6", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "System Boundary Protection",
+      "description": "The entity implements controls to prevent or detect and act upon unauthorized or malicious software.",
+      "control_type": "Preventive + Detective", "typical_frequency": "Continuous", "suggested_owner": "IT / Endpoint Management",
+      "required_evidence": "EDR deployment (100% coverage); Anti-malware configs and signature currency; Email security gateway; Content filtering/DLP; MDM policies; Application whitelisting; Device compliance enforcement",
+      "auditor_test_procedure": "Inspect: EDR deployment status. Inspect: Email gateway config. Inspect: Device compliance policy. Observe: EDR console.",
+      "iso_27001_mapping": ["A.8.1","A.8.7"], "nist_csf_mapping": ["PR.DS-01","PR.DS-02"]
+    },
+    {
+      "control_id": "CC6.7", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "Encryption of Data",
+      "description": "The entity protects information during transmission, movement, and removal through encryption.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "IT / Infrastructure",
+      "required_evidence": "TLS 1.2+ enforcement (TLS 1.3 preferred); AES-256 encryption at rest; Key management and rotation evidence (annual); VPN encryption; Email encryption; Certificate management; Legacy TLS disabled",
+      "auditor_test_procedure": "Inspect: Encryption at rest configs. Inspect: Key rotation logs. Inspect: TLS on load balancers. Reperform: Test TLS on sample endpoints.",
+      "iso_27001_mapping": ["A.8.24","A.8.25"], "nist_csf_mapping": ["PR.DS-01","PR.DS-02"]
+    },
+    {
+      "control_id": "CC6.8", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "Credential Protection",
+      "description": "The entity implements controls to prevent or detect unauthorized credential use.",
+      "control_type": "Preventive + Detective", "typical_frequency": "Continuous", "suggested_owner": "IT / Identity Management",
+      "required_evidence": "Password policy (14+ chars, complexity, history, banned list); MFA across all critical systems; Secrets management (no hardcoded creds); Service account rotation (90-day max); Lockout config (5 attempts); Lockout alerting; Quarterly MFA audit",
+      "auditor_test_procedure": "Inspect: Password policy config. Inspect: MFA status report. Inspect: Secrets management. Inspect: Service account rotation log.",
+      "iso_27001_mapping": ["A.5.17","A.8.5"], "nist_csf_mapping": ["PR.AA-02","PR.AA-03"]
+    },
+    {
+      "control_id": "CC6.9", "category": "CC6 - Logical and Physical Access", "tsc": "Security",
+      "control_name": "Data Transmission and Movement Restrictions",
+      "description": "The entity restricts the transmission, movement, and removal of information to authorized internal and external users and processes through data loss prevention controls, approved transfer channels, and removable media restrictions.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "IT / Security Operations",
+      "required_evidence": "Data Loss Prevention (DLP) policy configurations; USB and removable media port restrictions; Approved data transfer channels documented; Prohibition of sensitive data via unapproved channels; Cloud storage public access blocks; Pre-commit scanning for secrets/sensitive data",
+      "auditor_test_procedure": "Inspect: DLP policy configurations. Inspect: USB restriction settings on sample endpoints. Inspect: Cloud storage public access blocks. Inspect: Code repository secret scanning configuration.",
+      "iso_27001_mapping": ["A.5.14","A.8.10","A.8.12"], "nist_csf_mapping": ["PR.DS-01","PR.DS-02","PR.DS-10"]
+    },
+    {
+      "control_id": "CC7.1", "category": "CC7 - System Operations", "tsc": "Security",
+      "control_name": "Detection of Changes and Anomalies",
+      "description": "The entity uses detection and monitoring to identify configuration changes introducing vulnerabilities and anomalies.",
+      "control_type": "Detective", "typical_frequency": "Continuous", "suggested_owner": "IT / Security Operations",
+      "required_evidence": "SIEM config and alert rules; IDS/IPS evidence; FIM configurations; Cloud config monitoring (AWS Config, Azure Policy); Anomaly detection rules; SOC procedures; Weekly alert review evidence",
+      "auditor_test_procedure": "Inspect: SIEM alert rules. Inspect: Cloud config compliance. Inspect: FIM config. Inspect: Weekly alert review logs.",
+      "iso_27001_mapping": ["A.8.15","A.8.16"], "nist_csf_mapping": ["DE.CM-01","DE.CM-06","DE.CM-09"]
+    },
+    {
+      "control_id": "CC7.2", "category": "CC7 - System Operations", "tsc": "Security",
+      "control_name": "Monitoring for Security Events",
+      "description": "The entity monitors system components for anomalies indicative of malicious acts, natural disasters, and errors.",
+      "control_type": "Detective", "typical_frequency": "Continuous", "suggested_owner": "Security Operations / SOC",
+      "required_evidence": "Security monitoring dashboard; Centralized logging config; Alert notification and escalation (defined SLAs); Event correlation rules; 24/7 monitoring evidence (SOC or MSSP); Daily alert review; Weekly CISO summary; Uptime monitoring",
+      "auditor_test_procedure": "Inspect: SIEM dashboard. Inspect: Daily alert review logs. Inspect: Weekly CISO summary. Observe: Alert escalation.",
+      "iso_27001_mapping": ["A.8.15","A.8.16"], "nist_csf_mapping": ["DE.CM-01","DE.CM-02","DE.CM-03"]
+    },
+    {
+      "control_id": "CC7.3", "category": "CC7 - System Operations", "tsc": "Security",
+      "control_name": "Security Event Evaluation and Incident Response",
+      "description": "The entity evaluates security events to determine if they are incidents and responds per defined policies, including notification to affected parties.",
+      "control_type": "Detective + Corrective", "typical_frequency": "Per event", "suggested_owner": "CISO / IR Team",
+      "required_evidence": "Incident Response Plan; Severity matrix (Critical/High/Medium/Low); IR team roles and escalation paths; Playbooks for common scenarios; Incident ticket logs; Post-incident reviews for Critical/High; Tabletop exercises (annual); Notification procedures for individuals, regulators, customers",
+      "auditor_test_procedure": "Inspect: IRP. Inspect: All incident tickets. Inspect: Post-incident reviews. Inspect: Tabletop records. Inspect: Notification procedures.",
+      "iso_27001_mapping": ["A.5.24","A.5.25","A.5.26"], "nist_csf_mapping": ["RS.MA-01","RS.MA-02","RS.MA-03","RS.CO-02"]
+    },
+    {
+      "control_id": "CC7.4", "category": "CC7 - System Operations", "tsc": "Security",
+      "control_name": "Incident Recovery and Remediation",
+      "description": "The entity responds to incidents by executing activities to mitigate impact and recover operations.",
+      "control_type": "Corrective", "typical_frequency": "Per event", "suggested_owner": "IT / Infrastructure",
+      "required_evidence": "BCP; DRP; RTO/RPO definitions; Backup config and restore testing; Failover/redundancy documentation; DR test results (annual); Communication templates for incident notification",
+      "auditor_test_procedure": "Inspect: BCP and DRP. Inspect: RTO/RPO definitions. Inspect: DR test results. Inspect: Backup restore logs.",
+      "iso_27001_mapping": ["A.5.29","A.5.30"], "nist_csf_mapping": ["RC.RP-01","RC.RP-02","RC.CO-01"]
+    },
+    {
+      "control_id": "CC7.5", "category": "CC7 - System Operations", "tsc": "Security",
+      "control_name": "Vulnerability Management",
+      "description": "The entity identifies, evaluates, and manages vulnerabilities in infrastructure and software.",
+      "control_type": "Detective + Corrective", "typical_frequency": "Continuous", "suggested_owner": "IT / Security Operations",
+      "required_evidence": "Scanning configs/schedules (infra weekly, endpoints monthly, code per-PR); Scan reports with remediation tracking; Patching SLAs (Critical 7d, High 30d, Medium 90d, Low 180d); SLA compliance metrics; Pen test report (annual); CVSS classification; Vulnerability register",
+      "auditor_test_procedure": "Inspect: Scan reports. Inspect: SLA compliance report. Inspect: Pen test. Inspect: Vuln register. Reperform: Verify remediation for sample of 10 critical/high.",
+      "iso_27001_mapping": ["A.8.8","A.8.28"], "nist_csf_mapping": ["ID.RA-01","DE.CM-08"]
+    },
+    {
+      "control_id": "CC8.1", "category": "CC8 - Change Management", "tsc": "Security",
+      "control_name": "Change Authorization, Testing, and Implementation",
+      "description": "The entity authorizes, designs, develops, configures, documents, tests, approves, and implements changes to infrastructure, data, software, and procedures.",
+      "control_type": "Preventive", "typical_frequency": "Per event", "suggested_owner": "Engineering / IT Leads",
+      "required_evidence": "Change management policy (Standard/Normal/Emergency classification); Change request and approval workflow; SoD evidence (no self-approval to production); Peer review records; Emergency change retrospective reviews; Test environment validation evidence; Version control and branch protection; IaC change logs",
+      "auditor_test_procedure": "Inspect: Change policy. Inspect: Sample of 25 change tickets (full lifecycle). Inspect: Branch protection / SoD enforcement. Inspect: Emergency change retrospectives. Inspect: Environment separation. Reperform: Verify no self-approvals.",
+      "iso_27001_mapping": ["A.8.32","A.8.9","A.8.25","A.8.33"], "nist_csf_mapping": ["PR.IP-03","PR.DS-07"]
+    },
+    {
+      "control_id": "CC9.1", "category": "CC9 - Risk Mitigation", "tsc": "Security",
+      "control_name": "Risk Mitigation Strategies",
+      "description": "The entity identifies, selects, and develops risk mitigation activities for risks arising from potential business disruptions.",
+      "control_type": "Preventive", "typical_frequency": "Annual + Per event", "suggested_owner": "CISO / GRC Lead",
+      "required_evidence": "Risk treatment plans with owners and dates; BIA; BCP with testing evidence; DRP with testing evidence; Cyber liability insurance; Risk acceptance with executive sign-off for High/Critical risks",
+      "auditor_test_procedure": "Inspect: Risk register treatment plans. Inspect: BIA. Inspect: BCP/DRP test results. Inspect: Insurance policy. Inspect: Risk acceptance sign-offs.",
+      "iso_27001_mapping": ["A.5.29","A.5.30"], "nist_csf_mapping": ["ID.RA-05","ID.RA-06"]
+    },
+    {
+      "control_id": "CC9.2", "category": "CC9 - Risk Mitigation", "tsc": "Security",
+      "control_name": "Vendor and Third-Party Risk Management",
+      "description": "The entity assesses and manages risks associated with vendors and business partners.",
+      "control_type": "Detective", "typical_frequency": "Annual + Continuous", "suggested_owner": "GRC Lead / Procurement",
+      "required_evidence": "Vendor risk management policy; Vendor inventory with risk ratings; Vendor security assessments (SIG, CAIQ); Vendor SOC 2 report reviews (annual); Contract review for security clauses; Ongoing monitoring evidence; Subservice organization documentation; Vendor access reviews (quarterly)",
+      "auditor_test_procedure": "Inspect: Vendor inventory. Inspect: Assessments for critical vendors. Inspect: SOC 2 reviews. Inspect: Contract samples. Inspect: Vendor access reviews.",
+      "iso_27001_mapping": ["A.5.19","A.5.20","A.5.21","A.5.22"], "nist_csf_mapping": ["GV.SC-01","GV.SC-02","GV.SC-03","GV.SC-04","GV.SC-05","GV.SC-06","GV.SC-07","GV.SC-08","GV.SC-09","GV.SC-10"]
+    },
+    {
+      "control_id": "A1.1", "category": "Availability", "tsc": "Availability",
+      "control_name": "System Capacity Management",
+      "description": "The entity maintains, monitors, and evaluates current processing capacity to manage demand and enable additional capacity.",
+      "control_type": "Preventive + Detective", "typical_frequency": "Continuous + Quarterly", "suggested_owner": "IT / Infrastructure",
+      "required_evidence": "Capacity monitoring dashboards with alerts (75% warning, 90% critical); Auto-scaling configs; Quarterly capacity forecast reports; Performance monitoring; Load testing results; Resource utilization reports",
+      "auditor_test_procedure": "Inspect: Monitoring dashboards/alerts. Inspect: Quarterly capacity reports. Inspect: Auto-scaling configs.",
+      "iso_27001_mapping": ["A.8.6"], "nist_csf_mapping": ["ID.AM-05"]
+    },
+    {
+      "control_id": "A1.2", "category": "Availability", "tsc": "Availability",
+      "control_name": "Environmental Protections and Recovery",
+      "description": "The entity designs, implements, and monitors environmental protections, data backup, and recovery infrastructure.",
+      "control_type": "Preventive", "typical_frequency": "Continuous + Annual test", "suggested_owner": "IT / Infrastructure",
+      "required_evidence": "Backup policy and schedules; Backup success/failure reports monthly; Restore testing (quarterly recommended); Geographic redundancy/failover; Backup encryption; Cloud provider SOC 2 for environmental controls; Backup failure investigation evidence",
+      "auditor_test_procedure": "Inspect: Backup job logs. Inspect: Restore test results. Inspect: Cloud provider SOC 2 environmental sections. Inspect: Backup encryption.",
+      "iso_27001_mapping": ["A.7.5","A.8.13","A.8.14"], "nist_csf_mapping": ["PR.DS-04","PR.IR-04"]
+    },
+    {
+      "control_id": "A1.3", "category": "Availability", "tsc": "Availability",
+      "control_name": "Recovery Plan Testing",
+      "description": "The entity tests recovery plan procedures supporting system recovery.",
+      "control_type": "Detective", "typical_frequency": "Annual minimum", "suggested_owner": "IT / GRC Lead",
+      "required_evidence": "DR test plans and results (annual); BCP tabletop exercises; Failover testing; Backup restore verification logs; Post-test remediation tracking; RTO/RPO validation; Executive sign-off on results",
+      "auditor_test_procedure": "Inspect: DR test results. Inspect: Tabletop records. Inspect: Executive sign-off. Inspect: Remediation tracking.",
+      "iso_27001_mapping": ["A.5.29","A.5.30"], "nist_csf_mapping": ["RC.RP-01","RC.RP-03"]
+    },
+    {
+      "control_id": "A1.4", "category": "Availability", "tsc": "Availability",
+      "control_name": "Availability Incident Communication",
+      "description": "The entity communicates availability incidents, outages, and service degradations to affected customers and stakeholders through defined channels and procedures.",
+      "control_type": "Corrective", "typical_frequency": "Per event", "suggested_owner": "CISO / Customer Success",
+      "required_evidence": "Status page or customer communication channel; SLA breach notification procedures and templates; Root cause analysis communication templates; Stakeholder notification timeline requirements; Evidence of customer communications for outages during audit period",
+      "auditor_test_procedure": "Inspect: Status page or communication channel. Inspect: SLA notification templates. Inspect: Customer communications for any outages. Inquire: On availability incident communication process.",
+      "iso_27001_mapping": ["A.5.24","A.5.5"], "nist_csf_mapping": ["RS.CO-02","RS.CO-03"]
+    },
+    {
+      "control_id": "PI1.1", "category": "Processing Integrity", "tsc": "Processing Integrity",
+      "control_name": "Data Processing Completeness, Accuracy, and Timeliness",
+      "description": "The entity obtains or generates and uses relevant quality information regarding processing objectives.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "Engineering Leads",
+      "required_evidence": "Input validation controls; Data reconciliation procedures/reports; Error handling and logging; Automated data quality checks; Transaction monitoring and exception reporting; Processing specifications documentation",
+      "auditor_test_procedure": "Inspect: Input validation docs. Inspect: Reconciliation reports. Inspect: Error handling logs.",
+      "iso_27001_mapping": ["A.8.25","A.8.29"], "nist_csf_mapping": ["PR.DS-08"]
+    },
+    {
+      "control_id": "PI1.2", "category": "Processing Integrity", "tsc": "Processing Integrity",
+      "control_name": "System Input Controls",
+      "description": "The entity implements controls over system inputs to ensure accuracy and completeness.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "Engineering Leads",
+      "required_evidence": "Input validation rules; Data type/format enforcement; Duplicate detection; Authorization controls for input (RBAC); Error handling and rejection procedures; API input validation; OWASP input controls",
+      "auditor_test_procedure": "Inspect: Input validation rules for critical APIs. Inspect: API validation configs. Inspect: Error handling procedures.",
+      "iso_27001_mapping": ["A.8.25","A.8.28"], "nist_csf_mapping": ["PR.DS-08"]
+    },
+    {
+      "control_id": "PI1.3", "category": "Processing Integrity", "tsc": "Processing Integrity",
+      "control_name": "System Processing Controls",
+      "description": "The entity implements controls over system processing to ensure accuracy and completeness.",
+      "control_type": "Detective + Corrective", "typical_frequency": "Continuous", "suggested_owner": "Engineering / IT",
+      "required_evidence": "Error monitoring and alerting; Error logs and resolution tracking; Data integrity checks; Reconciliation reports; Exception handling; Correction and reprocessing procedures",
+      "auditor_test_procedure": "Inspect: Error monitoring config. Inspect: Error resolution logs. Inspect: Reconciliation reports.",
+      "iso_27001_mapping": ["A.8.15","A.8.16"], "nist_csf_mapping": ["DE.AE-02","DE.AE-03"]
+    },
+    {
+      "control_id": "PI1.4", "category": "Processing Integrity", "tsc": "Processing Integrity",
+      "control_name": "System Output Controls",
+      "description": "The entity implements controls to ensure system output is complete, accurate, and distributed only to authorized recipients.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "Engineering Leads",
+      "required_evidence": "Output validation procedures; Report generation verification; Distribution controls (RBAC); Output logging and audit trail; Automated completeness checks; Authorization for report distribution",
+      "auditor_test_procedure": "Inspect: Output validation procedures. Inspect: Distribution controls. Inspect: Output audit logs.",
+      "iso_27001_mapping": ["A.8.25"], "nist_csf_mapping": ["PR.DS-08"]
+    },
+    {
+      "control_id": "PI1.5", "category": "Processing Integrity", "tsc": "Processing Integrity",
+      "control_name": "Data Store Integrity",
+      "description": "The entity implements controls to ensure stored data maintains integrity, including detection and correction of corruption.",
+      "control_type": "Detective", "typical_frequency": "Continuous", "suggested_owner": "IT / Infrastructure",
+      "required_evidence": "Database integrity checks (referential integrity, constraints); Checksum/hash verification; Corruption detection mechanisms; Storage versioning/object lock; Backup integrity verification",
+      "auditor_test_procedure": "Inspect: DB integrity check configs. Inspect: Storage versioning. Inspect: Backup integrity logs.",
+      "iso_27001_mapping": ["A.8.24","A.8.13"], "nist_csf_mapping": ["PR.DS-01","PR.DS-06"]
+    },
+    {
+      "control_id": "C1.1", "category": "Confidentiality", "tsc": "Confidentiality",
+      "control_name": "Identification and Classification of Confidential Information",
+      "description": "The entity identifies and maintains confidential information to meet confidentiality objectives.",
+      "control_type": "Preventive", "typical_frequency": "Continuous + Annual", "suggested_owner": "GRC Lead / Data Owners",
+      "required_evidence": "Data classification policy; Data inventory with classification labels; Confidential data identification procedures; Handling guidelines by classification; Labeling/tagging procedures; DLP configurations; Periodic classification audit; Data flow diagrams",
+      "auditor_test_procedure": "Inspect: Classification policy. Inspect: Resource tags. Inspect: Data inventory. Inspect: DLP config. Inspect: Classification audits.",
+      "iso_27001_mapping": ["A.5.12","A.5.13"], "nist_csf_mapping": ["ID.AM-05","PR.DS-05"]
+    },
+    {
+      "control_id": "C1.2", "category": "Confidentiality", "tsc": "Confidentiality",
+      "control_name": "Disposal of Confidential Information",
+      "description": "The entity disposes of confidential information to meet confidentiality objectives.",
+      "control_type": "Preventive", "typical_frequency": "Per event + Annual", "suggested_owner": "IT / Data Owners",
+      "required_evidence": "Retention and disposal policy; Cloud lifecycle policies; Secure destruction procedures (cryptographic erasure, NIST 800-88); Certificates of destruction; Device wipe records; Hardware disposal procedures; Disposal verification evidence",
+      "auditor_test_procedure": "Inspect: Cloud lifecycle policies. Inspect: Device wipe records. Inspect: Destruction certificates.",
+      "iso_27001_mapping": ["A.8.10","A.7.14"], "nist_csf_mapping": ["PR.DS-03"]
+    },
+    {
+      "control_id": "P1.1", "category": "P1 - Notice", "tsc": "Privacy",
+      "control_name": "Privacy Notice and Communication",
+      "description": "The entity provides notice to data subjects about its privacy practices to meet its privacy objectives.",
+      "control_type": "Preventive", "typical_frequency": "Annual review", "suggested_owner": "GRC Lead / Legal",
+      "required_evidence": "Public privacy policy (current); Cookie consent mechanism; Consent collection records; Notice update/distribution procedures; Opt-in/opt-out mechanisms; Records of processing activities (ROPA)",
+      "auditor_test_procedure": "Inspect: Privacy policy with review date. Inspect: Cookie consent mechanism. Inspect: ROPA.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["GV.OC-02"]
+    },
+    {
+      "control_id": "P2.1", "category": "P2 - Choice and Consent", "tsc": "Privacy",
+      "control_name": "Choice and Consent Management",
+      "description": "The entity communicates choices available regarding collection, use, retention, disclosure, and disposal of personal information.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "GRC Lead",
+      "required_evidence": "Consent preference center/portal; Marketing opt-out mechanisms; Do Not Sell/Share configs (CCPA); Preference tracking; Third-party sharing consent records; Cookie preference tool",
+      "auditor_test_procedure": "Inspect: Consent preference center. Inspect: Opt-out mechanisms. Inspect: Cookie management tool.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["PR.DS-10"]
+    },
+    {
+      "control_id": "P3.1", "category": "P3 - Collection", "tsc": "Privacy",
+      "control_name": "Collection per Defined Purposes",
+      "description": "The entity collects personal information only for the purposes identified in the notice and with consent.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "Engineering / GRC Lead",
+      "required_evidence": "Data minimization policy; Collection purpose documentation; Privacy impact assessments (PIAs); Collection limitation enforcement in code; API collection audit logs; Third-party SDK review",
+      "auditor_test_procedure": "Inspect: PIAs from audit period. Inspect: API collection configs. Inquire: On collection limitation.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["PR.DS-10"]
+    },
+    {
+      "control_id": "P3.2", "category": "P3 - Collection", "tsc": "Privacy",
+      "control_name": "Communication of Consequences of Consent",
+      "description": "The entity communicates the consequences of withholding or withdrawing consent for the collection of personal information.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "GRC Lead / Legal",
+      "required_evidence": "Consent withdrawal process documentation; Communication to users about consequences of non-consent; UI/UX showing opt-out implications; Records of consent withdrawal requests processed",
+      "auditor_test_procedure": "Inspect: Consent withdrawal documentation. Inspect: UI showing opt-out consequences. Inspect: Withdrawal request records.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["GV.OC-02"]
+    },
+    {
+      "control_id": "P4.1", "category": "P4 - Use, Retention, and Disposal", "tsc": "Privacy",
+      "control_name": "Limitation of Use",
+      "description": "The entity limits the use of personal information to the purposes identified in the notice and for which consent was obtained.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "GRC Lead / Data Owners",
+      "required_evidence": "Purpose limitation documentation; Use restriction enforcement evidence; Access controls limiting use to stated purpose; Audit of data usage against stated purposes",
+      "auditor_test_procedure": "Inspect: Purpose limitation documentation. Inspect: Access controls. Inquire: On use limitation enforcement.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["PR.DS-10"]
+    },
+    {
+      "control_id": "P4.2", "category": "P4 - Use, Retention, and Disposal", "tsc": "Privacy",
+      "control_name": "Retention Limitation",
+      "description": "The entity retains personal information only for the period necessary to fulfill the stated purposes or as required by law.",
+      "control_type": "Preventive", "typical_frequency": "Annual review", "suggested_owner": "GRC Lead / Data Owners",
+      "required_evidence": "Data retention schedule with defined periods; Automated retention enforcement (lifecycle policies); Annual retention review documentation; Evidence of data deleted per schedule",
+      "auditor_test_procedure": "Inspect: Retention schedule. Inspect: Automated lifecycle configs. Inspect: Annual retention review. Inspect: Deletion records.",
+      "iso_27001_mapping": ["A.5.34","A.8.10"], "nist_csf_mapping": ["PR.DS-03","PR.DS-10"]
+    },
+    {
+      "control_id": "P4.3", "category": "P4 - Use, Retention, and Disposal", "tsc": "Privacy",
+      "control_name": "Secure Disposal",
+      "description": "The entity securely disposes of personal information when it is no longer needed for the stated purposes.",
+      "control_type": "Preventive", "typical_frequency": "Per event", "suggested_owner": "IT / Data Owners",
+      "required_evidence": "Secure disposal procedures; Disposal verification records; Cryptographic erasure or NIST 800-88 evidence; Device wipe records; Certificate of destruction for physical media",
+      "auditor_test_procedure": "Inspect: Disposal procedures. Inspect: Verification records. Inspect: Destruction certificates.",
+      "iso_27001_mapping": ["A.8.10","A.7.14"], "nist_csf_mapping": ["PR.DS-03"]
+    },
+    {
+      "control_id": "P5.1", "category": "P5 - Access", "tsc": "Privacy",
+      "control_name": "Data Subject Access Rights",
+      "description": "The entity grants data subjects the ability to access their stored personal information.",
+      "control_type": "Corrective", "typical_frequency": "Per request", "suggested_owner": "GRC Lead / Legal",
+      "required_evidence": "DSAR procedures; DSAR tracking and response time records; Self-service access portal (if applicable); Identity verification procedures; Response time compliance (30d GDPR, 45d CCPA)",
+      "auditor_test_procedure": "Inspect: DSAR procedures. Inspect: DSAR tracking log. Inspect: Response time compliance.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["PR.DS-10"]
+    },
+    {
+      "control_id": "P5.2", "category": "P5 - Access", "tsc": "Privacy",
+      "control_name": "Correction of Personal Information",
+      "description": "The entity makes corrections, amendments, or deletions to personal information based on data subject requests.",
+      "control_type": "Corrective", "typical_frequency": "Per request", "suggested_owner": "GRC Lead / Engineering",
+      "required_evidence": "Data correction/deletion workflow; Correction request tracking; Evidence of corrections completed during audit period; Notification to third parties of corrections (where disclosed)",
+      "auditor_test_procedure": "Inspect: Correction workflow. Inspect: Correction request log. Inspect: Third-party notification evidence.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["PR.DS-10"]
+    },
+    {
+      "control_id": "P6.1", "category": "P6 - Disclosure and Notification", "tsc": "Privacy",
+      "control_name": "Disclosure to Third Parties",
+      "description": "The entity discloses personal information to third parties only for identified purposes and with consent.",
+      "control_type": "Preventive", "typical_frequency": "Per event", "suggested_owner": "GRC Lead / Legal",
+      "required_evidence": "Data Processing Agreements (DPAs); Third-party data sharing agreements; Data sharing audit logs; Sub-processor list with advance notification; Cross-border transfer mechanisms (SCCs, BCRs)",
+      "auditor_test_procedure": "Inspect: DPA inventory. Inspect: Sub-processor list. Inspect: Cross-border transfer docs. Inspect: Sample DPAs.",
+      "iso_27001_mapping": ["A.5.34","A.5.14"], "nist_csf_mapping": ["PR.DS-10"]
+    },
+    {
+      "control_id": "P6.2", "category": "P6 - Disclosure and Notification", "tsc": "Privacy",
+      "control_name": "Authorized Disclosure Records",
+      "description": "The entity creates and maintains accurate records of authorized disclosures of personal information.",
+      "control_type": "Detective", "typical_frequency": "Continuous", "suggested_owner": "GRC Lead",
+      "required_evidence": "Disclosure log documenting all authorized sharing events; Recipient identification; Purpose of disclosure; Date and scope of disclosed data; Retention of disclosure records per policy",
+      "auditor_test_procedure": "Inspect: Disclosure log from audit period. Inspect: Sample records for completeness.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["ID.AM-05"]
+    },
+    {
+      "control_id": "P6.3", "category": "P6 - Disclosure and Notification", "tsc": "Privacy",
+      "control_name": "Unauthorized Disclosure Records",
+      "description": "The entity creates and maintains records of detected or reported unauthorized disclosures of personal information.",
+      "control_type": "Detective", "typical_frequency": "Per event", "suggested_owner": "CISO / GRC Lead",
+      "required_evidence": "Unauthorized disclosure/breach log; Incident records for privacy breaches; Root cause analysis; Remediation actions taken; Evidence of notification to affected individuals",
+      "auditor_test_procedure": "Inspect: Unauthorized disclosure log. Inspect: Breach incident records. Inspect: Notification evidence.",
+      "iso_27001_mapping": ["A.5.24","A.5.34"], "nist_csf_mapping": ["DE.AE-02"]
+    },
+    {
+      "control_id": "P6.4", "category": "P6 - Disclosure and Notification", "tsc": "Privacy",
+      "control_name": "Third-Party Privacy Commitments",
+      "description": "The entity obtains and assesses privacy commitments of third parties to whom personal information is disclosed.",
+      "control_type": "Preventive", "typical_frequency": "Annual", "suggested_owner": "GRC Lead",
+      "required_evidence": "Vendor privacy assessments; DPA clauses covering privacy obligations; Evidence of vendor privacy practice review; Vendor privacy certification review (SOC 2, ISO 27701)",
+      "auditor_test_procedure": "Inspect: Vendor privacy assessments. Inspect: DPA privacy clauses. Inquire: On vendor privacy evaluation.",
+      "iso_27001_mapping": ["A.5.19","A.5.34"], "nist_csf_mapping": ["GV.SC-05","GV.SC-06"]
+    },
+    {
+      "control_id": "P6.5", "category": "P6 - Disclosure and Notification", "tsc": "Privacy",
+      "control_name": "Third-Party Breach Notification Receipt",
+      "description": "The entity receives and processes notification of privacy breaches or incidents from third parties.",
+      "control_type": "Detective", "typical_frequency": "Per event", "suggested_owner": "CISO / GRC Lead",
+      "required_evidence": "Contractual requirement for vendor breach notification (72-hour clause); Vendor breach notification receipt log; Process for evaluating third-party breach impact; Escalation procedures",
+      "auditor_test_procedure": "Inspect: Vendor contract breach notification clauses. Inspect: Breach receipt log (if any events). Inspect: Escalation procedures.",
+      "iso_27001_mapping": ["A.5.24","A.5.19"], "nist_csf_mapping": ["DE.AE-02","RS.CO-02"]
+    },
+    {
+      "control_id": "P6.6", "category": "P6 - Disclosure and Notification", "tsc": "Privacy",
+      "control_name": "Breach Notification to Data Subjects",
+      "description": "The entity provides timely notification to affected data subjects following a breach of personal information.",
+      "control_type": "Corrective", "typical_frequency": "Per event", "suggested_owner": "CISO / Legal",
+      "required_evidence": "Breach notification policy with statutory timelines; Notification templates; Evidence of notifications sent (if breaches occurred); Regulatory notification records; Communication log",
+      "auditor_test_procedure": "Inspect: Breach notification policy. Inspect: Notification templates. Inspect: Notification records (if applicable).",
+      "iso_27001_mapping": ["A.5.24","A.5.5"], "nist_csf_mapping": ["RS.CO-02","RS.CO-03"]
+    },
+    {
+      "control_id": "P6.7", "category": "P6 - Disclosure and Notification", "tsc": "Privacy",
+      "control_name": "Communication of Privacy Practices Upon Request",
+      "description": "The entity communicates details of its privacy practices to data subjects upon request.",
+      "control_type": "Preventive", "typical_frequency": "Per request", "suggested_owner": "GRC Lead",
+      "required_evidence": "Privacy inquiry response procedures; Records of privacy inquiries received and responses provided; Average response time tracking; Publicly available privacy documentation",
+      "auditor_test_procedure": "Inspect: Privacy inquiry procedures. Inspect: Inquiry response log. Inspect: Public privacy documentation.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["GV.OC-02"]
+    },
+    {
+      "control_id": "P7.1", "category": "P7 - Quality", "tsc": "Privacy",
+      "control_name": "Quality of Personal Information",
+      "description": "The entity collects and maintains accurate, complete, and relevant personal information.",
+      "control_type": "Preventive", "typical_frequency": "Continuous", "suggested_owner": "Engineering / Data Owners",
+      "required_evidence": "Data quality procedures; Validation rules for personal information; Accuracy audit records; User profile update mechanisms; Deduplication processes; Quality monitoring reports",
+      "auditor_test_procedure": "Inspect: Data quality procedures. Inspect: Validation rules. Inspect: Quality reports.",
+      "iso_27001_mapping": ["A.5.34"], "nist_csf_mapping": ["PR.DS-10"]
+    },
+    {
+      "control_id": "P8.1", "category": "P8 - Monitoring and Enforcement", "tsc": "Privacy",
+      "control_name": "Privacy Monitoring and Enforcement",
+      "description": "The entity monitors compliance with privacy policies and addresses privacy-related complaints and disputes.",
+      "control_type": "Detective", "typical_frequency": "Continuous", "suggested_owner": "GRC Lead / DPO",
+      "required_evidence": "Privacy compliance monitoring procedures; Complaint handling process; Privacy incident response procedures; DPO appointment (if required); Privacy audit reports; Regulatory inquiry response procedures; Privacy training records",
+      "auditor_test_procedure": "Inspect: Privacy monitoring procedures. Inspect: Complaint log. Inspect: Privacy training completion. Inspect: Privacy audit findings.",
+      "iso_27001_mapping": ["A.5.34","A.5.36"], "nist_csf_mapping": ["DE.CM-01"]
+    }
+  ]
+}
