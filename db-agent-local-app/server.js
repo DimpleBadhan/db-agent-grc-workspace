@@ -203,7 +203,8 @@ function newDefaultSection(sectionKey, clientId, companyName) {
       storage_regions: '', devices_used: '', operating_systems: '', identity_provider: '',
       mfa_enabled: '', access_model: '', data_types: '', classification: '', encryption: '',
       backup: '', rto_rpo_targets: '', monitoring: '', top_risks: '', vulnerabilities: '', incidents: '',
-      framework_selection: '', audit_timeline: '', scope: '', client_users: '', client_usernames: '',
+      framework_selection: '', framework_selection_v2: '', soc2_tsc_scope: '["Security"]',
+      audit_timeline: '', scope: '', client_users: '', client_usernames: '',
       client_user_records: [], policy_templates: '', iso_27001_framework: '', soc2_framework: '',
       vendors: [], reprocessing_required: '', change_notice: '', downstream_reset_at: '',
       last_processed_at: '', ...base
@@ -853,6 +854,18 @@ function buildAuditQaSection(policies, risks, vendors, controls, onboarding) {
   if (onboarding && !String(onboarding.rto_rpo_targets || '').trim()) {
     findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'ONBOARDING-RTORPO', entity_type: 'Onboarding', severity: 'Medium', category: 'Business Continuity', details: 'RTO and RPO targets have not been documented. Applicable frameworks require defined and validated recovery time and recovery point objectives.', resolution_status: 'Open' });
   }
+  // Check SOC 2 TSC scope is defined when SOC 2 is selected
+  if (onboarding) {
+    const fwRaw = String(onboarding.framework_selection_v2 || onboarding.framework_selection || '').toLowerCase();
+    const isSoc2Selected = fwRaw.includes('soc');
+    if (isSoc2Selected) {
+      const tscScope = parseTscScope(onboarding);
+      if (!tscScope || tscScope.length === 0) {
+        findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'ONBOARDING-TSC', entity_type: 'Onboarding', severity: 'High', category: 'SOC 2 Scope', details: 'SOC 2 is selected but no Trust Services Categories (TSC) have been defined. Security is mandatory; return to onboarding to confirm your TSC scope.', resolution_status: 'Open' });
+      }
+    }
+  }
+
   // Check fraud risk is documented (framework requirement)
   const hasFraudRisk = (risks || []).some(r => r && String(r.category || '').toLowerCase().includes('fraud'));
   if (!hasFraudRisk) {
@@ -1555,6 +1568,56 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
   }
 }
 
+// ── Evidence tracker seeding ───────────────────────────────────────────────
+function buildEvidenceTrackerItems(onboarding) {
+  const items = [];
+  const fwRaw = String(onboarding.framework_selection_v2 || onboarding.framework_selection || '').toLowerCase();
+  const isSoc2 = fwRaw.includes('soc');
+  const isIso  = fwRaw.includes('iso');
+
+  if (isSoc2) {
+    const tscScope = parseTscScope(onboarding);
+    const controls = getSoc2ControlsForScope(tscScope);
+    for (const ctrl of controls) {
+      items.push({
+        evidence_id:       `EV-SOC2-${ctrl.control_id.replace(/\./g, '')}`,
+        framework:         'SOC 2',
+        control_id:        ctrl.control_id,
+        control_name:      ctrl.control_name,
+        tsc:               ctrl.tsc,
+        suggested_owner:   ctrl.suggested_owner || '',
+        frequency:         ctrl.typical_frequency || '',
+        required_evidence: ctrl.required_evidence || '',
+        status:            'Not Started',
+        evidence_location: '',
+        collection_date:   '',
+        deviations_notes:  '',
+      });
+    }
+  }
+
+  if (isIso) {
+    for (const ctrl of (iso27001Controls.controls || [])) {
+      items.push({
+        evidence_id:       `EV-ISO-${ctrl.control_id.replace(/\./g, '')}`,
+        framework:         'ISO 27001:2022',
+        control_id:        ctrl.control_id,
+        control_name:      ctrl.control_name,
+        theme:             ctrl.theme,
+        suggested_owner:   ctrl.suggested_owner || '',
+        frequency:         ctrl.typical_frequency || '',
+        required_evidence: ctrl.required_evidence || '',
+        status:            'Not Started',
+        evidence_location: '',
+        collection_date:   '',
+        deviations_notes:  '',
+      });
+    }
+  }
+
+  return items;
+}
+
 async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brief, paths) {
   // Risks
   let ra = buildRiskAssessmentSection(onboarding, ensureFraudRisk(topRisks, onboarding), policies);
@@ -1584,6 +1647,15 @@ async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brie
   saveJson(paths['control-mapping'].file, cm);
   const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls, onboarding);
   saveJson(paths['audit-qa'].file, aq);
+
+  // Evidence tracker — seed with framework-specific items if not already populated
+  const evPath = paths['evidence-tracker'].file;
+  const existingEv = readJson(evPath, newDefaultSection('evidence-tracker', clientId, clientId));
+  if (!existingEv.evidence_items || existingEv.evidence_items.length === 0) {
+    existingEv.evidence_items = buildEvidenceTrackerItems(onboarding);
+    saveJson(evPath, existingEv);
+    console.log(`[EvidenceTracker] Seeded ${existingEv.evidence_items.length} items for ${clientId}`);
+  }
 
   // Output
   const output = buildOutputSection(policies, ra.risks, vr.vendors, cm.controls, aq.findings);

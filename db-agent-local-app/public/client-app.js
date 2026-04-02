@@ -4425,6 +4425,9 @@ function collectPhasePayload(config, form) {
     // Also collect the v2 framework selection (JSON array — distinguishes Type I vs Type II)
     const v2Input = form.querySelector('[data-field="framework_selection_v2"]');
     if (v2Input) payload.framework_selection_v2 = v2Input.value;
+    // Collect TSC scope — injected as hidden input by renderFwCardSection
+    const tscInput = form.querySelector('[data-field="soc2_tsc_scope"]');
+    if (tscInput) payload.soc2_tsc_scope = tscInput.value;
   }
 
   if (config.groups) {
