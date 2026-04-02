@@ -356,6 +356,29 @@ const phaseConfigs = [
 
 phaseConfigs.push(
   {
+    key: "audit-qa",
+    label: "Audit QA",
+    phase: "Phase 5",
+    title: "Audit QA",
+    description: "Automated audit readiness checks across policies, risks, vendors, and controls. Findings flag gaps before your auditor does.",
+    property: "auditQa",
+    metaFields: [
+      { name: "audit_owner", label: "Audit owner", type: "text" },
+      { name: "audit_notes",  label: "Audit notes",  type: "textarea", full: true }
+    ],
+    itemCollection: "findings",
+    itemLabel: "Finding",
+    itemFields: [
+      { name: "finding_id",         label: "Finding ID",       type: "text",     readonly: true },
+      { name: "entity_type",        label: "Entity type",      type: "text",     readonly: true },
+      { name: "entity_id",          label: "Entity ID",        type: "text",     readonly: true },
+      { name: "severity",           label: "Severity",         type: "select",   options: ["", "Critical", "High", "Medium", "Low"] },
+      { name: "category",           label: "Category",         type: "text" },
+      { name: "details",            label: "Details",          type: "textarea", full: true, readonly: true },
+      { name: "resolution_status",  label: "Resolution",       type: "select",   options: ["Open", "In Progress", "Resolved", "Accepted"] }
+    ]
+  },
+  {
     key: "evidence-tracker",
     label: "Evidence Tracker",
     phase: "Audit Readiness",
@@ -3400,12 +3423,17 @@ function renderOnboardingPreview(sectionData, config) {
   // Framework
   const fwCard = document.createElement("div");
   fwCard.className = "ob-preview-card";
+  const tscDisplay = typeof getTscScopeDisplay === "function" ? getTscScopeDisplay(sectionData) : null;
   fwCard.innerHTML = `<p class="ob-preview-card-title">Compliance Frameworks</p>
     <div class="ob-preview-rows">
       <div class="ob-preview-row">
         <span class="ob-preview-label">Selected</span>
         <span class="ob-preview-value">${typeof getFwDisplayForOverview === "function" ? getFwDisplayForOverview(sectionData) : (sectionData.framework_selection || "—")}</span>
       </div>
+      ${tscDisplay ? `<div class="ob-preview-row">
+        <span class="ob-preview-label">SOC 2 TSC scope</span>
+        <span class="ob-preview-value">${tscDisplay}</span>
+      </div>` : ""}
     </div>`;
   grid.insertBefore(fwCard, grid.firstChild);
 

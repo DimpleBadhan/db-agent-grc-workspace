@@ -650,11 +650,13 @@ function updateTopbarBadge(clientData) {
   const ctx = getActiveContext();
 
   const evLabel = evItems.length > 0 ? `${evItems.length} evidence item${evItems.length !== 1 ? "s" : ""}` : null;
+  const tscLabel = getTscScopeDisplay(onboarding);
 
   slot.className = "fw-topbar-badge";
   slot.innerHTML = `
     <button type="button" class="fw-topbar-btn" id="fw-topbar-trigger" title="Click to review framework settings">
       <span class="fw-topbar-fw">${fwNames.map(n => FRAMEWORK_CONFIG[n]?.short || n).join(", ")}</span>
+      ${tscLabel ? `<span class="fw-topbar-pill fw-topbar-pill-tsc" title="SOC 2 Trust Services Categories in scope">${tscLabel}</span>` : ""}
       <span class="fw-topbar-pill">${ctx.task_scope_count} tasks</span>
       ${evLabel ? `<span class="fw-topbar-pill fw-topbar-pill-ev">${evLabel}</span>` : ""}
     </button>
@@ -815,4 +817,21 @@ function getFwDisplayForOverview(sectionData) {
   const fwNames = parseFwSelection(sectionData.framework_selection_v2 || sectionData.framework_selection);
   if (fwNames.length === 0) return sectionData.framework_selection || "Not selected";
   return fwNames.map(n => FRAMEWORK_CONFIG[n]?.label || n).join(", ");
+}
+
+function getTscScopeDisplay(sectionData) {
+  const hasSoc2 = parseFwSelection(sectionData.framework_selection_v2 || sectionData.framework_selection)
+    .some(n => n.startsWith("SOC 2"));
+  if (!hasSoc2) return null;
+  try {
+    const raw = sectionData.soc2_tsc_scope;
+    let scope = [];
+    if (Array.isArray(raw)) scope = raw;
+    else if (typeof raw === "string" && raw.startsWith("[")) scope = JSON.parse(raw);
+    else if (typeof raw === "string" && raw.trim()) scope = raw.split(",").map(s => s.trim()).filter(Boolean);
+    if (scope.length === 0) scope = ["Security"];
+    return scope.join(", ");
+  } catch (e) {
+    return "Security";
+  }
 }
