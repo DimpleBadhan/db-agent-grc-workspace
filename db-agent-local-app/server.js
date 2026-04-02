@@ -34,11 +34,40 @@ const templateCacheRoot = path.join(scriptRoot, 'template-cache', 'policy-templa
 const policyTemplateRoot = path.join(workspaceRoot, 'compliance_inputs', 'policy_templates', 'anthony_new_batch_policies_all_frameworks_combined');
 const configRoot        = path.join(scriptRoot, 'config');
 const promptRoot        = path.join(scriptRoot, 'prompts');
-const vendorCatalogPath = path.join(catalogRoot, 'vendor-catalog.json');
+const vendorCatalogPath   = path.join(catalogRoot, 'vendor-catalog.json');
+const soc2ControlsPath    = path.join(workspaceRoot, 'compliance_inputs', 'frameworks', 'soc2', 'soc2-controls.json');
 
 // Ensure directories exist
 for (const dir of [processingRoot, catalogRoot, dataRoot, exportsRoot, auditLogsRoot, frameworkCacheRoot]) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+// ── SOC 2 controls reference data ─────────────────────────────────────────
+let soc2Controls = { controls: [], tsc_categories: {} };
+try {
+  if (fs.existsSync(soc2ControlsPath)) {
+    soc2Controls = JSON.parse(fs.readFileSync(soc2ControlsPath, 'utf8'));
+    console.log(`[SOC2] Loaded ${soc2Controls.controls.length} controls from soc2-controls.json`);
+  }
+} catch (e) {
+  console.warn('[SOC2] Could not load soc2-controls.json:', e.message);
+}
+
+function getSoc2ControlsForScope(tscScope) {
+  const scope = Array.isArray(tscScope) && tscScope.length > 0 ? tscScope : ['Security'];
+  return (soc2Controls.controls || []).filter(c => scope.includes(c.tsc));
+}
+
+function parseTscScope(onboarding) {
+  const raw = onboarding.soc2_tsc_scope;
+  if (Array.isArray(raw) && raw.length > 0) return raw;
+  if (typeof raw === 'string') {
+    if (raw.startsWith('[')) {
+      try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; } catch (e) {}
+    }
+    if (raw.trim()) return raw.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return ['Security'];
 }
 
 // ── Section metadata ───────────────────────────────────────────────────────
@@ -644,16 +673,51 @@ function buildVendorQaSection(vendors) {
 }
 
 // ── Control mapping section ────────────────────────────────────────────────
-function buildControlMappingSection(policies, risks, vendors, frameworkLabels) {
+// Category → SOC 2 control IDs lookup (used when SOC 2 is in scope)
+const POLICY_CATEGORY_TO_SOC2 = {
+  'Access Control':          ['CC6.1','CC6.2','CC6.3'],
+  'Change Management':       ['CC8.1'],
+  'Incident Response':       ['CC7.3','CC7.4','CC7.5'],
+  'Business Continuity':     ['A1.2','A1.3','CC9.1'],
+  'Data Protection':         ['CC6.7','C1.1','C1.2'],
+  'Privacy':                 ['P1.1','P2.1','P3.1','P4.1','P5.1','P6.1','P7.1','P8.1'],
+  'Vendor Risk':             ['CC9.2'],
+  'Monitoring':              ['CC7.1','CC7.2'],
+  'Risk Management':         ['CC3.1','CC3.2','CC3.3','CC3.4'],
+  'Logical Access':          ['CC6.1','CC6.2','CC6.3','CC6.4','CC6.5','CC6.6'],
+  'Physical Security':       ['CC6.4'],
+  'HR Security':             ['CC1.4','CC1.5'],
+  'Cryptography':            ['CC6.7'],
+  'Network Security':        ['CC6.6','CC6.8'],
+  'Audit Logging':           ['CC7.1','CC7.2'],
+  'Processing Integrity':    ['PI1.1','PI1.2','PI1.3','PI1.4','PI1.5'],
+};
+
+function resolveFrameworkMapping(policyCategory, fw, onboarding) {
+  const isSoc2 = fw.toLowerCase().includes('soc');
+  if (!isSoc2 || !onboarding) return fw;
+  const tscScope = parseTscScope(onboarding);
+  const scopeControls = getSoc2ControlsForScope(tscScope).map(c => c.control_id);
+  const categoryKey = Object.keys(POLICY_CATEGORY_TO_SOC2).find(k =>
+    (policyCategory || '').toLowerCase().includes(k.toLowerCase())
+  );
+  if (!categoryKey) return fw;
+  const ids = POLICY_CATEGORY_TO_SOC2[categoryKey].filter(id => scopeControls.includes(id));
+  if (ids.length === 0) return fw;
+  return `${fw} — ${ids.join(', ')}`;
+}
+
+function buildControlMappingSection(policies, risks, vendors, frameworkLabels, onboarding) {
   const controls = [];
   let ctrlPol = 1, ctrlVdr = 1;
   const fw = (frameworkLabels || ['SOC 2 Trust Services Criteria']).join(', ');
 
   for (const policy of (policies || []).filter(Boolean)) {
+    const fwMapping = resolveFrameworkMapping(policy.category, fw, onboarding);
     const ctrl = {
       control_id: `CTRL-POL-${String(ctrlPol++).padStart(3,'0')}`,
       control_category: policy.category || 'Policy Control',
-      framework_mapping: fw,
+      framework_mapping: fwMapping,
       control_title: `${policy.name} Control`,
       description: `${policy.name} policy requirements are implemented and evidenced per ${fw}.`,
       linked_policies: policy.policy_id,
@@ -914,6 +978,7 @@ async function runRiskDiscoveryAgent(onboarding, brief) {
   const fwV2     = Array.isArray(onboarding.framework_selection_v2)
     ? onboarding.framework_selection_v2.join(', ')
     : (onboarding.framework_selection_v2 || onboarding.framework_selection || '');
+  const tscScope    = parseTscScope(onboarding);
   const pubAccess   = onboarding.publicly_accessible        || '';
   const irProcess   = onboarding.incident_response_process  || '';
   const critAccess  = onboarding.critical_access_many       || '';
@@ -923,6 +988,12 @@ async function runRiskDiscoveryAgent(onboarding, brief) {
     .filter(v => v && v.vendor_name)
     .map(v => `${v.vendor_name} (data: ${v.data_types_handled||'unspecified'}; access: ${v.access_level_detail||'unspecified'})`)
     .join(', ') || 'none';
+
+  const isSoc2 = fwV2.toLowerCase().includes('soc');
+  const tscScopeControls = isSoc2 ? getSoc2ControlsForScope(tscScope) : [];
+  const tscScopeText = isSoc2
+    ? `SOC 2 TSC in scope: ${tscScope.join(', ')} (${tscScopeControls.length} controls). Key control areas: ${[...new Set(tscScopeControls.map(c => c.category))].slice(0,8).join('; ')}.`
+    : '';
 
   if (!getAnthropic()) return getDerivedTopRisks(onboarding);
 
@@ -937,7 +1008,7 @@ RTO/RPO targets: ${onboarding.rto_rpo_targets||'not specified'}
 Monitoring: ${monitor} | Devices: ${devices} | OS: ${opSys} | Work model: ${workType}
 Publicly accessible: ${pubAccess} | IR process: ${irProcess} | Critical access (many people): ${critAccess}
 Prod changes peer-reviewed: ${prodChanges} | Security owner: ${secOwner}
-Compliance framework: ${fwV2}
+Compliance framework: ${fwV2}${tscScopeText ? `\n${tscScopeText}` : ''}
 Vendors: ${vendorList}
 
 For each risk return a JSON object with these exact fields:
@@ -1007,6 +1078,12 @@ async function runPolicyWriterAgent(policies, brief, onboarding, onBatchComplete
   const fwV2          = Array.isArray(onboarding.framework_selection_v2)
     ? onboarding.framework_selection_v2.join(', ')
     : (onboarding.framework_selection_v2 || fw || '');
+  const tscScope      = parseTscScope(onboarding);
+  const isSoc2Fw      = fwV2.toLowerCase().includes('soc');
+  const tscScopeControls = isSoc2Fw ? getSoc2ControlsForScope(tscScope) : [];
+  const tscScopeText  = isSoc2Fw
+    ? `SOC 2 TSC in scope: ${tscScope.join(', ')} — ${tscScopeControls.length} controls. Categories: ${[...new Set(tscScopeControls.map(c => c.category))].join('; ')}.`
+    : '';
 
   const vendorList = (Array.isArray(onboarding.vendors) ? onboarding.vendors : [])
     .filter(v => v && v.vendor_name)
@@ -1026,7 +1103,7 @@ Devices used: ${devices} | Operating systems: ${opSystems} | Storage regions: ${
 Data types: ${data} | Classification: ${classif} | Encryption: ${enc}
 Backup: ${backup} | Monitoring / SIEM: ${monitor}
 Compliance frameworks: ${fwV2} | Key risks: ${risks}
-
+${tscScopeText ? `SOC 2 TSC scope: ${tscScopeText}` : ''}
 SECURITY POSTURE (use to calibrate control requirements):
 Publicly accessible systems: ${pubAccess} | Prod/test separation: ${prodSep}
 IR process in place: ${irProcess} | Security logs reviewed regularly: ${logsReviewed}
@@ -1437,7 +1514,7 @@ async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brie
 
   // Controls + Audit
   const fw = getFrameworkLabels(onboarding);
-  const cm = buildControlMappingSection(policies, ra.risks, vr.vendors, fw);
+  const cm = buildControlMappingSection(policies, ra.risks, vr.vendors, fw, onboarding);
   saveJson(paths['control-mapping'].file, cm);
   const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls, onboarding);
   saveJson(paths['audit-qa'].file, aq);
@@ -1490,7 +1567,7 @@ async function runSelectiveVendorRegeneration(clientId) {
 
   // Regenerate controls + audit after vendor update
   const fw = getFrameworkLabels(onboarding);
-  const cm = buildControlMappingSection(policies, risks, vr.vendors, fw);
+  const cm = buildControlMappingSection(policies, risks, vr.vendors, fw, onboarding);
   saveJson(paths['control-mapping'].file, cm);
   const aq = buildAuditQaSection(policies, risks, vr.vendors, cm.controls, onboarding);
   saveJson(paths['audit-qa'].file, aq);
@@ -1552,7 +1629,7 @@ if (taskArg && workerTasks.includes(taskArg) && clientArg) {
         const ra = readJson(paths['risk-assessment'].file, { risks: [] });
         const vr = readJson(paths['vendor-risk'].file, { vendors: [] });
         const fw = getFrameworkLabels(ob);
-        const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw);
+        const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw, ob);
         saveJson(paths['control-mapping'].file, cm);
         const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
         saveJson(paths['audit-qa'].file, aq);
@@ -1808,7 +1885,7 @@ app.post('/api/clients/:id/process-controls', (req, res) => {
   const ra = readJson(paths['risk-assessment'].file, { risks: [] });
   const vr = readJson(paths['vendor-risk'].file, { vendors: [] });
   const fw = getFrameworkLabels(ob);
-  const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw);
+  const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw, ob);
   saveJson(paths['control-mapping'].file, cm);
   const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
   saveJson(paths['audit-qa'].file, aq);

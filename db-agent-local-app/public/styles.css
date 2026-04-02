@@ -2197,6 +2197,78 @@ select:disabled {
   line-height: 1.5;
 }
 
+/* TSC scope section */
+.tsc-scope-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.tsc-checkbox-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tsc-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.tsc-checkbox-row:hover {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+
+.tsc-checkbox-row.tsc-mandatory {
+  border-color: rgba(0, 197, 167, 0.3);
+  background: rgba(0, 197, 167, 0.05);
+  cursor: default;
+}
+
+.tsc-checkbox-row.tsc-checked:not(.tsc-mandatory) {
+  border-color: var(--accent);
+  background: rgba(0, 197, 167, 0.06);
+}
+
+.tsc-checkbox {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+
+.tsc-label-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tsc-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.tsc-mandatory .tsc-name {
+  color: var(--accent);
+}
+
+.tsc-desc {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
 /* Framework-specific badge colors */
 .fw-badge-soc2  { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; background: rgba(96, 165, 250, 0.12); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.22); }
 .fw-badge-iso   { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; background: rgba(52, 211, 153, 0.12); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.22); }
