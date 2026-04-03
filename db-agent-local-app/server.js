@@ -525,6 +525,7 @@ const POLICY_NAMES = [
   ['POL-023','Asset Management','Asset Management'],
   ['POL-024','Capacity Management','Infrastructure'],
   ['POL-025','Supplier Relationships','Vendor Risk'],
+  ['POL-026','HR Security Policy','Human Resources'],
 ];
 
 function newPolicyDraftRecords(onboarding, topRisks) {

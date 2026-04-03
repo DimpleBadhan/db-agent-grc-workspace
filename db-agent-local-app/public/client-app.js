@@ -4058,10 +4058,20 @@ function renderPolicyDetail(policies, index) {
 
 function renderPolicyGenerationStages(progress) {
   const { totalStages, pct, currentStageNum } = pgCalcStats(progress);
+  const isRefinement = state.processing?.kind === "policy-refinement";
 
   const section = document.createElement("section");
   section.className = "pg-panel";
   section.dataset.pgPanel = "1";
+
+  // Refinement banner — shown when re-evaluating existing policies
+  if (isRefinement && (progress.inProgress || progress.queued)) {
+    const banner = document.createElement("div");
+    banner.className = "pg-refinement-banner";
+    banner.dataset.pgRefinementBanner = "1";
+    banner.innerHTML = `<strong>Policy re-evaluation in progress</strong> — Policies are being rewritten to reflect the latest onboarding data, vendors, and risks. Existing approvals have been reset.`;
+    section.appendChild(banner);
+  }
 
   // Header
   const head = document.createElement("div");
@@ -4069,21 +4079,22 @@ function renderPolicyGenerationStages(progress) {
   const headLeft = document.createElement("div");
   const kicker = document.createElement("p");
   kicker.className = "section-label";
-  kicker.textContent = "Generation workflow";
+  kicker.textContent = isRefinement ? "Refinement workflow" : "Generation workflow";
+  kicker.dataset.pgKicker = "1";
   const titleEl = document.createElement("h4");
   titleEl.className = "pg-title";
   titleEl.dataset.pgTitle = "1";
   titleEl.textContent = progress.failed
-    ? "Generation failed"
+    ? "Re-evaluation failed"
     : progress.completed
-    ? "All policies generated"
+    ? (isRefinement ? "Policy re-evaluation complete" : "All policies generated")
     : progress.inProgress
-    ? (progress.stageNote || "Generating policies...")
+    ? (progress.stageNote || (isRefinement ? "Re-evaluating policies..." : "Generating policies..."))
     : "Queued — will start shortly";
   headLeft.appendChild(kicker);
   headLeft.appendChild(titleEl);
   const badge = renderBadge(
-    progress.inProgress ? "Running" : progress.completed ? "Complete" : progress.failed ? "Failed" : "Queued",
+    progress.inProgress ? (isRefinement ? "Refining" : "Running") : progress.completed ? "Complete" : progress.failed ? "Failed" : "Queued",
     progress.failed ? "danger" : progress.completed ? "success" : progress.inProgress ? "warning" : "default"
   );
   badge.dataset.pgBadge = "1";
@@ -5407,14 +5418,14 @@ async function startPolicyGenerationWorkflow({ forcePolicies = false } = {}) {
 
   state.processing = {
     active: true,
-    kind: "policy-generation",
+    kind: forcePolicies ? "policy-refinement" : "policy-generation",
     startedAt: new Date().toISOString(),
     error: ""
   };
   state.activePhaseKey = "policy-generation";
   renderTabs();
   renderActivePhase();
-  setStatus("Policy generation is in progress...");
+  setStatus(forcePolicies ? "Re-evaluating policies based on latest onboarding data..." : "Policy generation is in progress...");
 
   const params = new URLSearchParams({ background: "yes" });
   if (forcePolicies) {

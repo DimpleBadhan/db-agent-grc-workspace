@@ -4324,6 +4324,8 @@ code            { color: var(--accent); font-family: var(--font-mono); }
 .pg-bar-done::after { display: none; }
 .pg-bar-failed { background: linear-gradient(90deg, #c01040, var(--danger)); }
 .pg-bar-failed::after { display: none; }
+.pg-refinement-banner { background: rgba(255,180,0,0.08); border: 1px solid rgba(255,180,0,0.25); border-radius: 8px; padding: 10px 14px; font-size: 0.78rem; color: var(--text-2); margin-bottom: 16px; line-height: 1.5; }
+.pg-refinement-banner strong { color: #f5a623; }
 .pg-stage-list { display: flex; flex-direction: column; gap: 6px; }
 .pg-stage { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; border: 1px solid transparent; transition: background 0.15s; }
 .pg-stage-pending     { opacity: 0.4; }
