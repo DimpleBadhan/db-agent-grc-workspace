@@ -285,6 +285,20 @@ function getClientAggregate(clientId) {
     const data = readJson(paths[key].file, newDefaultSection(key, clientId, clientId));
     agg[meta.property] = data;
   }
+  // Backfill linked_controls on existing policies that were saved before this was wired up
+  if (Array.isArray(agg.policyGeneration?.policies) && agg.onboarding) {
+    const fw = getFrameworkLabels(agg.onboarding).join(', ');
+    let changed = false;
+    agg.policyGeneration.policies = agg.policyGeneration.policies.map(p => {
+      if (!p || p.linked_controls) return p;
+      const ids = resolveControlIds(p.category, fw, agg.onboarding);
+      if (!ids) return p;
+      changed = true;
+      return { ...p, linked_controls: ids };
+    });
+    if (changed) saveJson(paths['policy-generation'].file, agg.policyGeneration);
+  }
+
   // stats
   const pg  = agg.policyGeneration || {};
   const ra  = agg.riskAssessment   || {};
@@ -538,7 +552,7 @@ function newPolicyDraftRecords(onboarding, topRisks) {
     sign_off_completed_at: '',
     framework_mapping: fw,
     linked_risks: topRisks.slice(0, 2).map(r => r.title).join(', '),
-    linked_controls: '',
+    linked_controls: resolveControlIds(category, fw, onboarding),
     executive_summary: `${co} has established this ${name} to govern ${category.toLowerCase()} activities and ensure compliance with ${fw} requirements.`,
     table_of_contents: `1. Purpose and Scope\n2. Policy Statement\n3. Roles and Responsibilities\n4. Controls and Requirements\n5. Exceptions\n6. Review and Compliance`,
     body: `1. Purpose and Scope\n\n${co} requires this policy to govern ${name.toLowerCase()} across all systems, personnel, and third parties within scope.\n\n2. Policy Statement\n\nAll personnel must comply with the requirements defined in this policy. Non-compliance may result in disciplinary action.\n\n3. Roles and Responsibilities\n\nThe Security Owner is responsible for maintaining and enforcing this policy.\n\n4. Controls and Requirements\n\n- All workforce members must adhere to the requirements in this policy\n- The Security Owner must review compliance quarterly\n- Exceptions must be approved in writing\n\n5. Exceptions\n\nAll exceptions require written approval from the Security Owner.\n\n6. Review and Compliance\n\nThis policy is reviewed annually or following a material change.`,
@@ -721,25 +735,28 @@ function buildVendorQaSection(vendors) {
 // ── Control mapping section ────────────────────────────────────────────────
 // Category → SOC 2 control IDs lookup (used when SOC 2 is in scope)
 const POLICY_CATEGORY_TO_SOC2 = {
-  'Access Control':          ['CC6.1','CC6.2','CC6.3'],
-  'Change Management':       ['CC8.1'],
-  'Incident Response':       ['CC7.3','CC7.4','CC7.5'],
-  'Business Continuity':     ['A1.2','A1.3','CC9.1'],
-  'Data Protection':         ['CC6.7','C1.1','C1.2'],
-  'Privacy':                 ['P1.1','P2.1','P3.1','P4.1','P5.1','P6.1','P7.1','P8.1'],
-  'Vendor Risk':             ['CC9.2'],
-  'Monitoring':              ['CC7.1','CC7.2'],
-  'Risk Management':         ['CC3.1','CC3.2','CC3.3','CC3.4'],
-  'Logical Access':          ['CC6.1','CC6.2','CC6.3','CC6.4','CC6.5','CC6.6'],
-  'Physical Security':       ['CC6.4'],
-  'HR Security':             ['CC1.4','CC1.5'],
-  'Cryptography':            ['CC6.7'],
-  'Network Security':        ['CC6.6','CC6.8'],
-  'Audit Logging':           ['CC7.1','CC7.2'],
-  'Processing Integrity':    ['PI1.1','PI1.2','PI1.3','PI1.4','PI1.5'],
+  // Exact matches for categories used in POLICY_NAMES
+  'Endpoint Security':        ['CC6.8','CC7.1'],
+  'Access Management':        ['CC6.1','CC6.2','CC6.3'],
+  'Identity & Authentication':['CC6.1','CC6.2','CC6.6'],
+  'Human Resources':          ['CC1.4','CC1.5'],
+  'Business Continuity':      ['A1.2','A1.3','CC9.1'],
+  'Change Control':           ['CC8.1'],
+  'Infrastructure':           ['CC6.6','CC6.8','CC7.1'],
+  'Data Management':          ['CC6.7','C1.1','C1.2'],
+  'Cryptography':             ['CC6.7'],
+  'Security Operations':      ['CC7.1','CC7.2','CC7.3','CC7.4','CC7.5'],
+  'Governance':               ['CC1.1','CC1.2','CC2.1','CC3.1'],
+  'Physical Security':        ['CC6.4'],
+  'Privacy':                  ['P1.1','P2.1','P3.1','P4.1','P5.1','P6.1','P7.1','P8.1'],
+  'Vendor Risk':              ['CC9.2'],
+  'Engineering':              ['CC8.1','CC7.1'],
+  'Asset Management':         ['CC6.1','CC6.3'],
+  'Risk Management':          ['CC3.1','CC3.2','CC3.3','CC3.4'],
+  'Processing Integrity':     ['PI1.1','PI1.2','PI1.3','PI1.4','PI1.5'],
 };
 
-function resolveFrameworkMapping(policyCategory, fw, onboarding) {
+function resolveControlIds(policyCategory, fw, onboarding) {
   const parts = [];
 
   const isSoc2 = fw.toLowerCase().includes('soc');
@@ -761,8 +778,13 @@ function resolveFrameworkMapping(policyCategory, fw, onboarding) {
     if (isoIds.length > 0) parts.push(`ISO 27001: ${isoIds.slice(0, 5).join(', ')}`);
   }
 
-  if (parts.length === 0) return fw;
-  return `${fw} — ${parts.join(' | ')}`;
+  return parts.join(' | ');
+}
+
+function resolveFrameworkMapping(policyCategory, fw, onboarding) {
+  const ids = resolveControlIds(policyCategory, fw, onboarding);
+  if (!ids) return fw;
+  return `${fw} — ${ids}`;
 }
 
 function buildControlMappingSection(policies, risks, vendors, frameworkLabels, onboarding) {
