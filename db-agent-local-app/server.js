@@ -358,7 +358,7 @@ function getClients() {
 // ── Onboarding helpers ─────────────────────────────────────────────────────
 const MATERIAL_FIELDS = ['industry','cloud_providers','identity_provider','data_types','classification',
   'encryption','backup','monitoring','framework_selection','framework_selection_v2','business_model',
-  'employee_headcount','mfa_enabled','access_model','tech_stack','storage_regions'];
+  'employee_headcount','mfa_enabled','access_model','devices_used','storage_regions'];
 
 function onboardingMateriallyChanged(before, after) {
   const scalarChanged = MATERIAL_FIELDS.some(f => String(before[f]||'').trim() !== String(after[f]||'').trim());
@@ -567,7 +567,10 @@ function newPolicyDraftRecords(onboarding, topRisks) {
     sign_off_completed_by: '',
     sign_off_completed_at: '',
     framework_mapping: fw,
-    linked_risks: topRisks.slice(0, 2).map(r => r.title).join(', '),
+    linked_risks: topRisks.filter(r => r && r.category && category && (
+      r.category.toLowerCase().includes(category.toLowerCase()) ||
+      category.toLowerCase().includes(r.category.toLowerCase())
+    )).slice(0, 2).concat(topRisks.slice(0, 1)).slice(0, 2).map(r => r.title).join(', '),
     linked_controls: resolveControlIds(category, fw, onboarding),
     executive_summary: `${co} has established this ${name} to govern ${category.toLowerCase()} activities and ensure compliance with ${fw} requirements.`,
     table_of_contents: `1. Purpose and Scope\n2. Policy Statement\n3. Roles and Responsibilities\n4. Controls and Requirements\n5. Exceptions\n6. Review and Compliance`,
@@ -711,6 +714,7 @@ function buildVendorRiskSection(onboarding, risks, policies) {
       residual_score: rl * ri, residual_risk: `${scoreBandLabel(rl * ri)} (L${rl} x I${ri})`,
       treatment_plan: `Treatment plan (Mitigate)\nPrimary objective: Govern ${co}'s use of ${v.vendor_name} and reduce third-party risk.\nKey actions:\n- Obtain and review ${v.vendor_name}'s latest security certifications\n- Confirm data processing agreement is in place\n- Review access levels annually\n- Include in quarterly vendor risk review\nReview requirement: Annual formal review with quarterly check-ins.`,
       linked_risks: riskIds.slice(0, 2).join(', '),
+      linked_policies: policyIds.filter(id => ['POL-020','POL-025'].includes(id)).join(', ') || policyIds.slice(0, 2).join(', '),
       linked_controls: resolveControlIds('Vendor Risk', fw, onboarding),
       notes: `${v.vendor_name} provides ${v.service_category || 'services'} to ${co}. Access to ${data} makes this vendor material to ${co}'s ${classif} obligations.`,
       assessment_questions: {
@@ -841,10 +845,10 @@ function buildControlMappingSection(policies, risks, vendors, frameworkLabels, o
     const ctrl = {
       control_id: `CTRL-VDR-${String(ctrlVdr++).padStart(3,'0')}`,
       control_category: 'Vendor Risk Control',
-      framework_mapping: fw,
+      framework_mapping: resolveFrameworkMapping('Vendor Risk', fw, onboarding),
       control_title: `${vendor.vendor_name} Vendor Oversight`,
       description: `Third-party oversight controls for ${vendor.vendor_name} — covers assurance, contract, and access reviews.`,
-      linked_policies: '',
+      linked_policies: vendor.linked_policies || '',
       linked_risks: vendor.linked_risks || '',
       linked_vendors: vendor.vendor_id,
       owner: '',
@@ -1073,7 +1077,7 @@ function ensureFraudRisk(risks, onboarding) {
   return [...(risks || []), {
     title: `Fraud risk — misappropriation, invoice fraud, or identity fraud affecting ${co}`,
     category: 'Fraud',
-    threat_source: 'Internal personnel, compromised accounts, or external fraudsters targeting ${co} operations',
+    threat_source: `Internal personnel, compromised accounts, or external fraudsters targeting ${co} operations`,
     why_this_company: `${co} handles ${data} and conducts financial and operational activity that could be exploited through fraudulent transactions, social engineering, or insider misuse. ${fw} requires fraud risk to be assessed and documented.`,
     likelihood: 2,
     impact: 4,
@@ -1529,9 +1533,11 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
         const discoveredRisks = await runRiskDiscoveryAgent(onboarding, brief);
         topRisks = discoveredRisks; // replace hardcoded list with AI-discovered risks
         // Save discovered risks to risk assessment so policies and risks are aligned
+        // Use applyRiskGovernance to preserve any existing AI-generated treatment plans/scores
         const raFile = paths['risk-assessment'].file;
         const existingRa = readJson(raFile, {});
         const discoveredRaSection = buildRiskAssessmentSection(onboarding, topRisks, finalPolicies);
+        discoveredRaSection.risks = applyRiskGovernance(existingRa.risks || [], discoveredRaSection.risks);
         saveJson(raFile, { ...existingRa, ...discoveredRaSection, risks: discoveredRaSection.risks });
         // Rebuild policy drafts with discovered risks so linked_risks are accurate
         const draftsWithRisks = newPolicyDraftRecords(onboarding, topRisks);
