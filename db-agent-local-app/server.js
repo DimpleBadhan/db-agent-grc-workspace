@@ -110,6 +110,13 @@ function getIso27001ControlIdsByCategory(policyCategory) {
     'Processing Integrity':     ['A.8.9','A.8.25','A.8.26','A.8.28','A.8.29'],
     'Mobile Device':            ['A.6.7','A.8.1'],
     'Remote Work':              ['A.6.7','A.5.14'],
+    // Risk categories (getDerivedTopRisks + AI discovery)
+    'Access Control':           ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3'],
+    'Data Protection':          ['A.5.12','A.5.13','A.5.14','A.8.10','A.8.11','A.8.12'],
+    'Incident Response':        ['A.5.24','A.5.25','A.5.26','A.5.27','A.5.28'],
+    'Change Management':        ['A.8.32'],
+    'Compliance':               ['A.5.31','A.5.32','A.5.35','A.5.36'],
+    'Fraud':                    ['A.8.16','A.5.7','A.6.3'],
   };
   const key = Object.keys(ISO_CATEGORY_MAP).find(k =>
     (policyCategory || '').toLowerCase().includes(k.toLowerCase())
@@ -746,7 +753,7 @@ function buildVendorQaSection(vendors) {
 // ── Control mapping section ────────────────────────────────────────────────
 // Category → SOC 2 control IDs lookup (used when SOC 2 is in scope)
 const POLICY_CATEGORY_TO_SOC2 = {
-  // Exact matches for categories used in POLICY_NAMES
+  // Policy categories (POLICY_NAMES)
   'Endpoint Security':        ['CC6.8','CC7.1'],
   'Access Management':        ['CC6.1','CC6.2','CC6.3'],
   'Identity & Authentication':['CC6.1','CC6.2','CC6.6'],
@@ -765,6 +772,15 @@ const POLICY_CATEGORY_TO_SOC2 = {
   'Asset Management':         ['CC6.1','CC6.3'],
   'Risk Management':          ['CC3.1','CC3.2','CC3.3','CC3.4'],
   'Processing Integrity':     ['PI1.1','PI1.2','PI1.3','PI1.4','PI1.5'],
+  'Mobile Device':            ['CC6.8'],
+  'Remote Work':              ['CC6.6','CC6.8'],
+  // Risk categories (getDerivedTopRisks + AI discovery)
+  'Access Control':           ['CC6.1','CC6.2','CC6.3'],
+  'Data Protection':          ['CC6.7','C1.1','C1.2'],
+  'Incident Response':        ['CC7.3','CC7.4','CC7.5'],
+  'Change Management':        ['CC8.1'],
+  'Compliance':               ['CC1.1','CC2.1','CC2.2'],
+  'Fraud':                    ['CC2.2','CC3.1','CC9.1'],
 };
 
 function resolveControlIds(policyCategory, fw, onboarding) {
