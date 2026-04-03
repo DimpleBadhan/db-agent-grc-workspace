@@ -89,25 +89,27 @@ function getIso27001ControlsForTheme(theme) {
 
 function getIso27001ControlIdsByCategory(policyCategory) {
   const ISO_CATEGORY_MAP = {
-    'Access Control':       ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3','A.8.5'],
-    'Change Management':    ['A.8.32'],
-    'Incident Response':    ['A.5.24','A.5.25','A.5.26','A.5.27','A.5.28'],
-    'Business Continuity':  ['A.5.29','A.5.30','A.8.13','A.8.14'],
-    'Data Protection':      ['A.5.12','A.5.13','A.5.14','A.8.10','A.8.11','A.8.12'],
-    'Privacy':              ['A.5.34'],
-    'Vendor Risk':          ['A.5.19','A.5.20','A.5.21','A.5.22','A.5.23'],
-    'Monitoring':           ['A.8.15','A.8.16','A.8.17'],
-    'Risk Management':      ['A.5.7','A.5.8'],
-    'Logical Access':       ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3'],
-    'Physical Security':    ['A.7.1','A.7.2','A.7.3','A.7.4'],
-    'HR Security':          ['A.6.1','A.6.2','A.6.3','A.6.4','A.6.5'],
-    'Cryptography':         ['A.8.24'],
-    'Network Security':     ['A.8.20','A.8.21','A.8.22','A.8.23'],
-    'Audit Logging':        ['A.8.15','A.8.16'],
-    'Processing Integrity': ['A.8.9','A.8.25','A.8.26','A.8.28','A.8.29'],
-    'Secure Development':   ['A.8.25','A.8.26','A.8.27','A.8.28','A.8.29','A.8.31','A.8.32'],
-    'Asset Management':     ['A.5.9','A.5.10','A.5.11','A.5.12'],
-    'Compliance':           ['A.5.31','A.5.32','A.5.35','A.5.36'],
+    // Exact matches for categories used in POLICY_NAMES
+    'Endpoint Security':        ['A.8.1','A.8.7','A.8.19'],
+    'Access Management':        ['A.5.15','A.5.16','A.5.17','A.5.18','A.8.2','A.8.3','A.8.5'],
+    'Identity & Authentication':['A.5.16','A.5.17','A.8.5','A.8.6'],
+    'Human Resources':          ['A.6.1','A.6.2','A.6.3','A.6.4','A.6.5','A.6.6'],
+    'Business Continuity':      ['A.5.29','A.5.30','A.8.13','A.8.14'],
+    'Change Control':           ['A.8.32'],
+    'Infrastructure':           ['A.8.20','A.8.21','A.8.22','A.8.9'],
+    'Data Management':          ['A.5.12','A.5.13','A.5.14','A.8.10','A.8.11','A.8.12'],
+    'Cryptography':             ['A.8.24'],
+    'Security Operations':      ['A.5.24','A.5.25','A.5.26','A.5.27','A.5.28','A.8.15','A.8.16'],
+    'Governance':               ['A.5.1','A.5.2','A.5.4','A.5.35','A.5.36'],
+    'Physical Security':        ['A.7.1','A.7.2','A.7.3','A.7.4'],
+    'Privacy':                  ['A.5.34'],
+    'Vendor Risk':              ['A.5.19','A.5.20','A.5.21','A.5.22','A.5.23'],
+    'Engineering':              ['A.8.25','A.8.26','A.8.27','A.8.28','A.8.29','A.8.31','A.8.32'],
+    'Asset Management':         ['A.5.9','A.5.10','A.5.11','A.5.12'],
+    'Risk Management':          ['A.5.7','A.5.8'],
+    'Processing Integrity':     ['A.8.9','A.8.25','A.8.26','A.8.28','A.8.29'],
+    'Mobile Device':            ['A.6.7','A.8.1'],
+    'Remote Work':              ['A.6.7','A.5.14'],
   };
   const key = Object.keys(ISO_CATEGORY_MAP).find(k =>
     (policyCategory || '').toLowerCase().includes(k.toLowerCase())
@@ -348,11 +350,15 @@ function getClients() {
 
 // ── Onboarding helpers ─────────────────────────────────────────────────────
 const MATERIAL_FIELDS = ['industry','cloud_providers','identity_provider','data_types','classification',
-  'encryption','backup','monitoring','framework_selection','business_model','employee_headcount',
-  'mfa_enabled','access_model','tech_stack','storage_regions'];
+  'encryption','backup','monitoring','framework_selection','framework_selection_v2','business_model',
+  'employee_headcount','mfa_enabled','access_model','tech_stack','storage_regions'];
 
 function onboardingMateriallyChanged(before, after) {
-  return MATERIAL_FIELDS.some(f => String(before[f]||'').trim() !== String(after[f]||'').trim());
+  const scalarChanged = MATERIAL_FIELDS.some(f => String(before[f]||'').trim() !== String(after[f]||'').trim());
+  // Vendor list changes also require downstream regeneration
+  const prevVendors = JSON.stringify((before.vendors||[]).map(v=>v.vendor_name||'').sort());
+  const nextVendors = JSON.stringify((after.vendors||[]).map(v=>v.vendor_name||'').sort());
+  return scalarChanged || prevVendors !== nextVendors;
 }
 
 function resetDownstreamWorkflow(clientId) {
@@ -526,6 +532,8 @@ const POLICY_NAMES = [
   ['POL-024','Capacity Management','Infrastructure'],
   ['POL-025','Supplier Relationships','Vendor Risk'],
   ['POL-026','HR Security Policy','Human Resources'],
+  ['POL-027','Mobile Device & BYOD','Mobile Device'],
+  ['POL-028','Remote Work & Telework','Remote Work'],
 ];
 
 function newPolicyDraftRecords(onboarding, topRisks) {
@@ -571,6 +579,7 @@ function buildRiskAssessmentSection(onboarding, topRisks, policies) {
   const backup  = onboarding.backup            || 'backup procedures';
   const monitor = onboarding.monitoring        || 'monitoring tooling';
   const enc     = onboarding.encryption        || 'encryption controls';
+  const fw      = getFrameworkLabels(onboarding).join(', ');
 
   const policyIds = (policies || []).filter(Boolean).map(p => p.policy_id).join(', ');
 
@@ -600,7 +609,7 @@ function buildRiskAssessmentSection(onboarding, topRisks, policies) {
       treatment_due: new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0],
       review_date: new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
       linked_policies: policyIds.split(', ').slice(0, 3).join(', '),
-      linked_controls: '',
+      linked_controls: resolveControlIds(risk.category || '', fw, onboarding),
     };
   });
 
@@ -661,6 +670,7 @@ function buildVendorRiskSection(onboarding, risks, policies) {
   const co        = onboarding.legal_entity || 'The Organization';
   const data      = onboarding.data_types   || 'company data';
   const classif   = onboarding.classification || 'regulated data';
+  const fw        = getFrameworkLabels(onboarding).join(', ');
   const riskIds   = (risks || []).filter(Boolean).map(r => r.risk_id);
   const policyIds = (policies || []).filter(Boolean).map(p => p.policy_id);
 
@@ -694,7 +704,7 @@ function buildVendorRiskSection(onboarding, risks, policies) {
       residual_score: rl * ri, residual_risk: `${scoreBandLabel(rl * ri)} (L${rl} x I${ri})`,
       treatment_plan: `Treatment plan (Mitigate)\nPrimary objective: Govern ${co}'s use of ${v.vendor_name} and reduce third-party risk.\nKey actions:\n- Obtain and review ${v.vendor_name}'s latest security certifications\n- Confirm data processing agreement is in place\n- Review access levels annually\n- Include in quarterly vendor risk review\nReview requirement: Annual formal review with quarterly check-ins.`,
       linked_risks: riskIds.slice(0, 2).join(', '),
-      linked_controls: '',
+      linked_controls: resolveControlIds('Vendor Risk', fw, onboarding),
       notes: `${v.vendor_name} provides ${v.service_category || 'services'} to ${co}. Access to ${data} makes this vendor material to ${co}'s ${classif} obligations.`,
       assessment_questions: {
         security_posture: [`Does ${v.vendor_name} hold current SOC 2 Type II or ISO 27001 certification?`, `How does ${v.vendor_name} manage security incidents affecting ${co}'s data?`],
