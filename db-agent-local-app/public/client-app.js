@@ -2876,6 +2876,26 @@ function getWorkflowState(clientData) {
               : ["Complete vendor assessments first."]
     },
     {
+      key: "audit-qa",
+      unlocked: controlCount > 0,
+      complete: (() => {
+        const findings = Array.isArray(clientData.auditQa?.findings) ? clientData.auditQa.findings : [];
+        return findings.length > 0 && findings.every(f => f.resolution_status === "Resolved" || f.resolution_status === "Accepted");
+      })(),
+      status: controlCount === 0 ? "blocked" : (() => {
+        const findings = Array.isArray(clientData.auditQa?.findings) ? clientData.auditQa.findings : [];
+        if (findings.length === 0) return "ready";
+        const allResolved = findings.every(f => f.resolution_status === "Resolved" || f.resolution_status === "Accepted");
+        return allResolved ? "complete" : "in-progress";
+      })(),
+      detail: (() => {
+        const findings = Array.isArray(clientData.auditQa?.findings) ? clientData.auditQa.findings : [];
+        const open = findings.filter(f => f.resolution_status === "Open").length;
+        return findings.length === 0 ? "No audit findings yet" : `${open} open finding${open !== 1 ? "s" : ""} of ${findings.length}`;
+      })(),
+      blockers: controlCount > 0 ? [] : ["Complete control mapping first."]
+    },
+    {
       key: "output",
       unlocked: onboardingSnapshot.ready,
       complete: policyCount > 0,
