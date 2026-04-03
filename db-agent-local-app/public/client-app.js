@@ -5301,7 +5301,10 @@ async function loadClient(clientId) {
   // If policy generation was in progress when the page was refreshed, resume polling
   if (getPolicyGenerationProgress(state.selectedClientData).inProgress) {
     state.processing = { active: true, kind: "policy-generation", startedAt: new Date().toISOString(), error: "" };
-    waitForPolicyGenerationCompletion().catch(() => {});
+    waitForPolicyGenerationCompletion().catch(() => {
+      // Poller died silently — do a full data refresh so UI reflects actual state
+      refreshSelectedClientSnapshot({ reloadClients: true }).catch(() => {});
+    });
   }
 }
 
@@ -5988,3 +5991,32 @@ async function initializeApp() {
 }
 
 initializeApp().catch((error) => setStatus(error.message, "error"));
+
+// ── Generation stuck-UI heartbeat ────────────────────────────────────────────
+// If the poller dies silently (network blip, render error, etc.) the UI can
+// freeze showing "RUNNING" even though generation has already completed.
+// On tab/window focus, check the actual server status and auto-correct.
+async function checkGenerationHeartbeat() {
+  if (!state.selectedClientId) return;
+  if (!state.processing?.active) return;
+  try {
+    const statusData = await api(`/api/clients/${encodeURIComponent(state.selectedClientId)}/policy-generation-status`);
+    const normalizedStatus = String(statusData.generation_status || "").toLowerCase();
+    if (normalizedStatus !== "in progress") {
+      // Generation finished (or failed) but UI is still stuck — full refresh
+      const fresh = await api(`/api/clients/${encodeURIComponent(state.selectedClientId)}`);
+      state.selectedClientData = fresh;
+      syncDerivedVendors(state.selectedClientData);
+      state.processing = { active: false, kind: "", startedAt: "", error: "" };
+      await loadClients();
+      renderWorkspaceHeader(state.selectedClientData.client);
+      renderTabs();
+      renderActivePhase();
+    }
+  } catch (_) { /* best-effort — ignore network errors */ }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") checkGenerationHeartbeat();
+});
+window.addEventListener("focus", checkGenerationHeartbeat);
