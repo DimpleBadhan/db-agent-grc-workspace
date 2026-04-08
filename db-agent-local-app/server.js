@@ -543,6 +543,47 @@ const POLICY_NAMES = [
   ['POL-028','Remote Work & Telework','Remote Work'],
 ];
 
+// ── Policy ↔ Risk affinity matching ───────────────────────────────────────
+const POLICY_RISK_KEYWORDS = {
+  'Access Management':        ['access','credential','account','privilege','identity','authentication','unauthorised','unauthorized'],
+  'Identity & Authentication':['identity','authentication','credential','mfa','password','account','unauthorised'],
+  'Data Management':          ['data','exposure','leak','classification','retention','disposal','breach'],
+  'Endpoint Security':        ['endpoint','device','malware','workstation','laptop','ransomware','patch'],
+  'Infrastructure':           ['cloud','infrastructure','misconfiguration','network','server','configuration'],
+  'Security Operations':      ['detection','response','monitoring','logging','incident','siem','alert'],
+  'Business Continuity':      ['backup','recovery','continuity','resilience','rto','rpo','disaster','availability'],
+  'Change Control':           ['change','deployment','release','update','patch','change management'],
+  'Vendor Risk':              ['vendor','third.party','supplier','dependency','supply chain'],
+  'Privacy':                  ['privacy','pii','personal data','gdpr','data subject'],
+  'Cryptography':             ['encryption','key','cryptograph','tls','certificate'],
+  'Physical Security':        ['physical','facility','premises','hardware','environmental'],
+  'Human Resources':          ['personnel','employee','staff','training','awareness','joiner','leaver','offboard'],
+  'Engineering':              ['development','code','software','devsecops','vulnerability','sdlc'],
+  'Risk Management':          ['risk','compliance','governance','audit'],
+  'Governance':               ['governance','policy','compliance','audit','board'],
+  'Mobile Device':            ['mobile','byod','device','phone','tablet'],
+  'Remote Work':              ['remote','telework','vpn','home working','hybrid'],
+};
+
+function linkRisksToPolicy(topRisks, category) {
+  const keywords = POLICY_RISK_KEYWORDS[category] || [];
+  const scored = (topRisks || []).filter(Boolean).map(r => {
+    const haystack = `${r.title || ''} ${r.category || ''} ${r.threat_source || ''} ${r.why_this_company || ''}`.toLowerCase();
+    const hits = keywords.filter(kw => haystack.includes(kw)).length;
+    // Also check category affinity directly
+    const catMatch = r.category && category && (
+      r.category.toLowerCase().includes(category.toLowerCase()) ||
+      category.toLowerCase().includes(r.category.toLowerCase())
+    ) ? 3 : 0;
+    return { r, score: hits + catMatch };
+  }).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+
+  const matched = scored.slice(0, 2).map(x => x.r);
+  // Always include at least 1 risk even if no keyword match
+  if (matched.length === 0 && topRisks.length > 0) matched.push(topRisks[0]);
+  return matched.map(r => r.title).join(', ');
+}
+
 function newPolicyDraftRecords(onboarding, topRisks) {
   const fw = getFrameworkLabels(onboarding).join(', ');
   const co = onboarding.legal_entity || 'The Organization';
@@ -567,10 +608,7 @@ function newPolicyDraftRecords(onboarding, topRisks) {
     sign_off_completed_by: '',
     sign_off_completed_at: '',
     framework_mapping: fw,
-    linked_risks: topRisks.filter(r => r && r.category && category && (
-      r.category.toLowerCase().includes(category.toLowerCase()) ||
-      category.toLowerCase().includes(r.category.toLowerCase())
-    )).slice(0, 2).concat(topRisks.slice(0, 1)).slice(0, 2).map(r => r.title).join(', '),
+    linked_risks: linkRisksToPolicy(topRisks, category, name),
     linked_controls: resolveControlIds(category, fw, onboarding),
     executive_summary: `${co} has established this ${name} to govern ${category.toLowerCase()} activities and ensure compliance with ${fw} requirements.`,
     table_of_contents: `1. Purpose and Scope\n2. Policy Statement\n3. Roles and Responsibilities\n4. Controls and Requirements\n5. Exceptions\n6. Review and Compliance`,
@@ -594,24 +632,29 @@ function buildRiskAssessmentSection(onboarding, topRisks, policies) {
   const policyIds = (policies || []).filter(Boolean).map(p => p.policy_id).join(', ');
 
   const risks = topRisks.map((risk, i) => {
+    // Use AI-supplied scores if present, fall back to profile lookup
     const prof = getRiskScoreProfile(risk.title);
-    const inherent = prof.l * prof.i;
-    const residual = prof.rl * prof.ri;
+    const l  = Number(risk.likelihood)         || prof.l;
+    const im = Number(risk.impact)             || prof.i;
+    const rl = Number(risk.residual_likelihood)|| prof.rl;
+    const ri = Number(risk.residual_impact)    || prof.ri;
+    const inherent = l * im;
+    const residual = rl * ri;
     return {
       risk_id:    `RISK-${String(i + 1).padStart(3, '0')}`,
       category:   risk.category,
       asset:      `${co} data and systems`,
       threat:     risk.title,
       threat_source: risk.threat_source,
-      why_this_company: `${co} is exposed to this risk due to its use of ${cloud} and handling of ${data}.`,
+      why_this_company: risk.why_this_company || `${co} is exposed to this risk due to its use of ${cloud} and handling of ${data}.`,
       existing_controls: policyIds ? `Linked policies: ${policyIds.split(', ').slice(0, 3).join(', ')}` : 'Controls documented in policy pack.',
       control_gaps: `Formal review cadence and ownership not yet fully established for this risk domain at ${co}.`,
       impact_description: `If this risk materialises, ${co}'s ${classif} and service delivery could be materially affected.`,
-      likelihood: prof.l, impact: prof.i,
+      likelihood: l, impact: im,
       inherent_score: inherent, inherent_rating: scoreBandLabel(inherent),
-      likelihood_justification: `Given ${co}'s use of ${cloud} and ${idp}, this risk carries a likelihood of ${prof.l}/5.`,
-      impact_justification: `Given ${co}'s handling of ${classif} and reliance on ${backup}, impact is rated ${prof.i}/5.`,
-      residual_likelihood: prof.rl, residual_impact: prof.ri,
+      likelihood_justification: risk.likelihood_justification || `Given ${co}'s use of ${cloud} and ${idp}, this risk carries a likelihood of ${l}/5.`,
+      impact_justification: risk.impact_justification || `Given ${co}'s handling of ${classif} and reliance on ${backup}, impact is rated ${im}/5.`,
+      residual_likelihood: rl, residual_impact: ri,
       residual_score: residual, residual_rating: scoreBandLabel(residual),
       treatment_plan: `Treat — implement controls to reduce likelihood and impact. Review quarterly.`,
       treatment_action: 'Mitigate',
@@ -676,6 +719,55 @@ function getDerivedVendors(onboarding) {
   return [...vendors, ...autoVendors];
 }
 
+function buildVendorAssessmentQuestions(vendor, co, data) {
+  const vn  = vendor.vendor_name;
+  const cat = (vendor.service_category || vendor.business_function || '').toLowerCase();
+  const base = {
+    contractual_compliance: [`Does ${co} have a current DPA in place with ${vn}?`, `Is the contract with ${vn} reviewed annually?`],
+    incident_response:      [`How does ${vn} notify ${co} of security incidents affecting ${co}'s data?`, `What is ${vn}'s average incident response time?`],
+    ongoing_assurance:      [`How frequently does ${vn} provide updated assurance evidence to ${co}?`, `Does ${vn} undergo independent third-party audits?`],
+  };
+  if (cat.includes('cloud') || cat.includes('infrastructure') || cat.includes('hosting')) {
+    return { ...base,
+      security_posture:    [`Does ${vn} hold SOC 2 Type II, ISO 27001, or CSA STAR certification?`, `How does ${vn} manage vulnerabilities in shared infrastructure used by ${co}?`],
+      data_handling:       [`In which regions does ${vn} store ${co}'s data, and can ${co} restrict this?`, `What encryption standards does ${vn} apply to ${co}'s data at rest and in transit?`],
+      access_controls:     [`How does ${vn} isolate ${co}'s environment from other tenants?`, `How quickly does ${vn} revoke access for departed ${co} staff?`],
+      business_continuity: [`What is ${vn}'s documented RTO/RPO for services used by ${co}?`, `How does ${vn} handle disaster recovery affecting ${co}'s workloads?`],
+    };
+  }
+  if (cat.includes('identity') || cat.includes('iam') || cat.includes('access')) {
+    return { ...base,
+      security_posture:    [`Does ${vn} hold SOC 2 Type II or ISO 27001 certification?`, `How does ${vn} protect ${co}'s credential and identity data?`],
+      data_handling:       [`What identity data does ${vn} store on behalf of ${co}, and for how long?`, `Does ${vn} support ${co}'s data residency requirements?`],
+      access_controls:     [`How does ${vn} enforce least-privilege access for ${co} administrators?`, `What MFA options does ${vn} provide for ${co}'s user base?`],
+      business_continuity: [`What is ${vn}'s uptime SLA and how does outage affect ${co}'s authentication?`],
+    };
+  }
+  if (cat.includes('monitor') || cat.includes('siem') || cat.includes('security')) {
+    return { ...base,
+      security_posture:    [`Does ${vn} hold SOC 2 Type II or ISO 27001 certification?`, `How does ${vn} protect log and alert data collected from ${co}?`],
+      data_handling:       [`What log data from ${co}'s environment does ${vn} retain, and for how long?`, `Does ${vn} anonymise or aggregate ${co}'s data in shared analytics pipelines?`],
+      access_controls:     [`Who at ${vn} can access ${co}'s security logs and under what conditions?`, `How does ${vn} manage privileged access to ${co}'s monitoring environment?`],
+      business_continuity: [`What is ${vn}'s RTO if detection services are disrupted for ${co}?`],
+    };
+  }
+  if (cat.includes('hr') || cat.includes('payroll') || cat.includes('recruit')) {
+    return { ...base,
+      security_posture:    [`Does ${vn} hold SOC 2 Type II or ISO 27001 certification?`, `How does ${vn} protect employee PII on behalf of ${co}?`],
+      data_handling:       [`What employee data does ${vn} process for ${co}, and is it subject to GDPR or similar?`, `Does ${vn} transfer ${co} employee data outside ${co}'s required regions?`],
+      access_controls:     [`How does ${vn} limit access to ${co}'s employee records to authorised HR staff?`, `How quickly does ${vn} remove access for offboarded ${co} HR administrators?`],
+      business_continuity: [`What is ${vn}'s data recovery capability if payroll or HR data is corrupted?`],
+    };
+  }
+  // Default — generic
+  return { ...base,
+    security_posture:    [`Does ${vn} hold current SOC 2 Type II or ISO 27001 certification?`, `How does ${vn} manage security incidents affecting ${co}'s data?`],
+    data_handling:       [`Where does ${vn} store ${co}'s data, and does it align with ${co}'s regional requirements?`, `What encryption standards does ${vn} apply to ${co}'s ${data} at rest and in transit?`],
+    access_controls:     [`How does ${vn} manage privileged access to ${co}'s environment?`, `How quickly does ${vn} revoke access for departed ${co} staff?`],
+    business_continuity: [`What is ${vn}'s documented RTO/RPO for services used by ${co}?`],
+  };
+}
+
 function buildVendorRiskSection(onboarding, risks, policies) {
   const co        = onboarding.legal_entity || 'The Organization';
   const data      = onboarding.data_types   || 'company data';
@@ -717,15 +809,7 @@ function buildVendorRiskSection(onboarding, risks, policies) {
       linked_policies: policyIds.filter(id => ['POL-020','POL-025'].includes(id)).join(', ') || policyIds.slice(0, 2).join(', '),
       linked_controls: resolveControlIds('Vendor Risk', fw, onboarding),
       notes: `${v.vendor_name} provides ${v.service_category || 'services'} to ${co}. Access to ${data} makes this vendor material to ${co}'s ${classif} obligations.`,
-      assessment_questions: {
-        security_posture: [`Does ${v.vendor_name} hold current SOC 2 Type II or ISO 27001 certification?`, `How does ${v.vendor_name} manage security incidents affecting ${co}'s data?`],
-        data_handling: [`Where does ${v.vendor_name} store ${co}'s data, and does it align with ${co}'s regional requirements?`, `What encryption standards does ${v.vendor_name} apply to ${co}'s data at rest and in transit?`],
-        access_controls: [`How does ${v.vendor_name} manage privileged access to ${co}'s environment?`, `How quickly does ${v.vendor_name} revoke access for departed ${co} staff?`],
-        business_continuity: [`What is ${v.vendor_name}'s documented RTO/RPO for services used by ${co}?`],
-        contractual_compliance: [`Does ${co} have a current DPA in place with ${v.vendor_name}?`],
-        incident_response: [`How does ${v.vendor_name} notify ${co} of security incidents affecting ${co}'s data?`],
-        ongoing_assurance: [`How frequently does ${v.vendor_name} provide updated assurance evidence to ${co}?`],
-      },
+      assessment_questions: buildVendorAssessmentQuestions(v, co, data),
     };
   });
 
@@ -881,7 +965,7 @@ function buildControlMappingSection(policies, risks, vendors, frameworkLabels, o
 }
 
 // ── Audit QA section ───────────────────────────────────────────────────────
-function buildAuditQaSection(policies, risks, vendors, controls, onboarding) {
+function buildAuditQaSection(policies, risks, vendors, controls, onboarding, evidenceItems = []) {
   const findings = [];
   let c = 1;
 
@@ -928,6 +1012,12 @@ function buildAuditQaSection(policies, risks, vendors, controls, onboarding) {
   const hasFraudControl = (controls || []).some(ctrl => String(ctrl.control_category || '').toLowerCase().includes('fraud'));
   if (hasFraudRisk && !hasFraudControl) {
     findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'CTRL-FRAUD', entity_type: 'Control', severity: 'Medium', category: 'Fraud Assessment', details: 'Fraud risk is documented but no fraud prevention control has been mapped. A fraud-specific control should be added to the control register.', resolution_status: 'Open' });
+  }
+
+  // Check evidence completeness
+  const uncollected = (evidenceItems || []).filter(e => e && (!e.evidence_location || String(e.evidence_location).trim() === '') && String(e.status || '').toLowerCase() !== 'collected');
+  if (uncollected.length > 0) {
+    findings.push({ finding_id: `AQA-${String(c++).padStart(3,'0')}`, entity_id: 'EVIDENCE-GAPS', entity_type: 'Evidence', severity: 'High', category: 'Evidence Completeness', details: `${uncollected.length} evidence item${uncollected.length > 1 ? 's have' : ' has'} no evidence location recorded and status is not Collected: ${uncollected.slice(0, 3).map(e => e.control_id || e.evidence_id).join(', ')}${uncollected.length > 3 ? ` (+${uncollected.length - 3} more)` : ''}.`, resolution_status: 'Open' });
   }
 
   return {
@@ -1293,17 +1383,41 @@ function runPolicyCriticAgent(policies, brief, onboarding) {
   const co    = onboarding.legal_entity || brief.company || '';
   const cloud = (onboarding.cloud_providers || '').split(',')[0].trim();
   const idp   = (onboarding.identity_provider || '').split(',')[0].trim();
+  const REQUIRED_SECTIONS = ['Purpose', 'Scope', 'Roles', 'Responsibilities', 'Review'];
+  const MIN_BODY_WORDS = 200;
   return policies.map(policy => {
-    const full = `${policy.executive_summary || ''} ${policy.body || ''}`;
+    const body    = policy.body || '';
+    const summary = policy.executive_summary || '';
+    const full    = `${summary} ${body}`;
+    const wordCount = body.split(/\s+/).filter(Boolean).length;
     let score = 100;
     const flags = [];
+
+    // Specificity — generic language
     const genericCount = (full.match(/\b(the organization|the company|the entity|the firm)\b/gi) || []).length;
-    if (genericCount > 0) { score -= Math.min(20, genericCount * 5); flags.push(`Uses generic language ${genericCount} times`); }
-    if (co && !(policy.executive_summary || '').includes(co)) { score -= 10; flags.push(`Executive summary missing "${co}"`); }
-    if (cloud && !(policy.body || '').toLowerCase().includes(cloud.toLowerCase())) { score -= 5; flags.push(`Missing cloud reference "${cloud}"`); }
-    if (idp && !(policy.body || '').toLowerCase().includes(idp.toLowerCase())) { score -= 5; flags.push(`Missing IdP reference "${idp}"`); }
+    if (genericCount > 0) { score -= Math.min(20, genericCount * 5); flags.push(`Uses generic language ${genericCount} times — replace with "${co}"`); }
+
+    // Company name in summary
+    if (co && !summary.includes(co)) { score -= 10; flags.push(`Executive summary missing company name "${co}"`); }
+
+    // Technology specificity
+    if (cloud && !body.toLowerCase().includes(cloud.toLowerCase())) { score -= 5; flags.push(`Body missing cloud provider reference "${cloud}"`); }
+    if (idp && !body.toLowerCase().includes(idp.toLowerCase())) { score -= 5; flags.push(`Body missing identity provider reference "${idp}"`); }
+
+    // Weak language
     const weakLang = (full.match(/\b(should consider|may implement|could adopt|might want to)\b/gi) || []).length;
-    if (weakLang > 0) { score -= Math.min(15, weakLang * 3); flags.push(`Weak language: ${weakLang} instances`); }
+    if (weakLang > 0) { score -= Math.min(15, weakLang * 3); flags.push(`Weak non-mandatory language: ${weakLang} instance${weakLang !== 1 ? 's' : ''}`); }
+
+    // Body length — too short means template wasn't expanded
+    if (wordCount < MIN_BODY_WORDS) { score -= 15; flags.push(`Body too short (${wordCount} words) — minimum ${MIN_BODY_WORDS} expected`); }
+
+    // Required section coverage
+    const missingSections = REQUIRED_SECTIONS.filter(s => !body.toLowerCase().includes(s.toLowerCase()));
+    if (missingSections.length > 0) { score -= missingSections.length * 5; flags.push(`Missing sections: ${missingSections.join(', ')}`); }
+
+    // Linked controls populated
+    if (!policy.linked_controls) { score -= 5; flags.push('No linked controls assigned'); }
+
     return { policy_id: policy.policy_id, score: Math.max(0, score), flags };
   });
 }
@@ -1486,6 +1600,16 @@ async function runClientProcessing(clientId, forcePolicyRegeneration = false) {
     const existingPolicies = (pg.policies || []).filter(Boolean);
     const hasExisting = existingPolicies.length > 0;
     let finalPolicies = [];
+
+    // Snapshot previous version before overwriting
+    if (hasExisting && forcePolicyRegeneration) {
+      pg.previous_version = {
+        policies: existingPolicies,
+        generation_completed_at: pg.generation_completed_at || null,
+        snapshotted_at: new Date().toISOString(),
+        policy_count: existingPolicies.length,
+      };
+    }
 
     if (hasExisting && !forcePolicyRegeneration) {
       // Skip policy generation — use existing
@@ -1700,17 +1824,30 @@ async function runRisksAndVendors(clientId, onboarding, topRisks, policies, brie
   const fw = getFrameworkLabels(onboarding);
   const cm = buildControlMappingSection(policies, ra.risks, vr.vendors, fw, onboarding);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls, onboarding);
-  saveJson(paths['audit-qa'].file, aq);
 
-  // Evidence tracker — seed with framework-specific items if not already populated
+  // Evidence tracker — seed on first run; reseed when controls change
   const evPath = paths['evidence-tracker'].file;
   const existingEv = readJson(evPath, newDefaultSection('evidence-tracker', clientId, clientId));
+  const freshItems = buildEvidenceTrackerItems(onboarding);
   if (!existingEv.evidence_items || existingEv.evidence_items.length === 0) {
-    existingEv.evidence_items = buildEvidenceTrackerItems(onboarding);
+    // First run — seed everything
+    existingEv.evidence_items = freshItems;
     saveJson(evPath, existingEv);
-    console.log(`[EvidenceTracker] Seeded ${existingEv.evidence_items.length} items for ${clientId}`);
+    console.log(`[EvidenceTracker] Seeded ${freshItems.length} items for ${clientId}`);
+  } else {
+    // Reseed — add any new control IDs not already tracked, preserve existing evidence entries
+    const existingIds = new Set((existingEv.evidence_items || []).map(i => i.control_id));
+    const newItems = freshItems.filter(i => !existingIds.has(i.control_id));
+    if (newItems.length > 0) {
+      existingEv.evidence_items = [...existingEv.evidence_items, ...newItems];
+      saveJson(evPath, existingEv);
+      console.log(`[EvidenceTracker] Added ${newItems.length} new evidence items for ${clientId}`);
+    }
   }
+
+  // Audit QA — built after evidence tracker so evidence completeness can be checked
+  const aq = buildAuditQaSection(policies, ra.risks, vr.vendors, cm.controls, onboarding, existingEv.evidence_items || []);
+  saveJson(paths['audit-qa'].file, aq);
 
   // Output
   const output = buildOutputSection(policies, ra.risks, vr.vendors, cm.controls, aq.findings);
@@ -1762,7 +1899,8 @@ async function runSelectiveVendorRegeneration(clientId) {
   const fw = getFrameworkLabels(onboarding);
   const cm = buildControlMappingSection(policies, risks, vr.vendors, fw, onboarding);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(policies, risks, vr.vendors, cm.controls, onboarding);
+  const evItems = readJson(paths['evidence-tracker'].file, { evidence_items: [] }).evidence_items || [];
+  const aq = buildAuditQaSection(policies, risks, vr.vendors, cm.controls, onboarding, evItems);
   saveJson(paths['audit-qa'].file, aq);
   console.log(`[vendors-worker] Generated ${vr.vendors.length} vendors for ${clientId}`);
 }
@@ -1824,7 +1962,8 @@ if (taskArg && workerTasks.includes(taskArg) && clientArg) {
         const fw = getFrameworkLabels(ob);
         const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw, ob);
         saveJson(paths['control-mapping'].file, cm);
-        const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
+        const evItemsC = readJson(paths['evidence-tracker'].file, { evidence_items: [] }).evidence_items || [];
+        const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob, evItemsC);
         saveJson(paths['audit-qa'].file, aq);
         console.log(`[controls-worker] Generated ${cm.controls.length} controls for ${clientArg}`);
       }
@@ -2080,7 +2219,8 @@ app.post('/api/clients/:id/process-controls', (req, res) => {
   const fw = getFrameworkLabels(ob);
   const cm = buildControlMappingSection(pg.policies, ra.risks, vr.vendors, fw, ob);
   saveJson(paths['control-mapping'].file, cm);
-  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
+  const evItemsCtrl = readJson(paths['evidence-tracker'].file, { evidence_items: [] }).evidence_items || [];
+  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob, evItemsCtrl);
   saveJson(paths['audit-qa'].file, aq);
   res.json(getClientAggregate(clientId));
 });
@@ -2094,7 +2234,8 @@ app.post('/api/clients/:id/process-audit', (req, res) => {
   const ra = readJson(paths['risk-assessment'].file, { risks: [] });
   const vr = readJson(paths['vendor-risk'].file, { vendors: [] });
   const cm = readJson(paths['control-mapping'].file, { controls: [] });
-  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob);
+  const evItemsAudit = readJson(paths['evidence-tracker'].file, { evidence_items: [] }).evidence_items || [];
+  const aq = buildAuditQaSection(pg.policies, ra.risks, vr.vendors, cm.controls, ob, evItemsAudit);
   saveJson(paths['audit-qa'].file, aq);
   res.json(getClientAggregate(clientId));
 });

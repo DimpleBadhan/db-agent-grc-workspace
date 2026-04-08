@@ -197,6 +197,15 @@ function renderRiskListView(risks) {
       const resSev = rmScoreSeverity(risk.residual_score);
       const row = document.createElement("div");
       row.className = "rm-risk-row";
+      const dueDateAlert = (() => {
+        if (!risk.treatment_due) return "";
+        const due = new Date(risk.treatment_due);
+        const now = new Date();
+        const daysLeft = Math.ceil((due - now) / 86400000);
+        if (daysLeft < 0)  return `<span class="rm-due-alert rm-due-overdue">Overdue by ${Math.abs(daysLeft)}d</span>`;
+        if (daysLeft <= 14) return `<span class="rm-due-alert rm-due-soon">Due in ${daysLeft}d</span>`;
+        return "";
+      })();
       row.innerHTML = `
         <div class="rm-row-left">
           <span class="rm-sev-badge rm-sev-${sev}">${rmSeverityLabel(sev)}</span>
@@ -204,6 +213,7 @@ function renderRiskListView(risks) {
             <div class="rm-row-header">
               <span class="rm-risk-id">${risk.risk_id || `RSK-${String(idx + 1).padStart(3, "0")}`}</span>
               ${risk.category ? `<span class="rm-risk-category">${risk.category}</span>` : ""}
+              ${dueDateAlert}
             </div>
             <span class="rm-risk-threat">${risk.threat || "Unnamed risk"}</span>
             ${risk.treatment_action ? `<span class="rm-risk-action">${risk.treatment_action}</span>` : ""}

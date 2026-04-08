@@ -3074,6 +3074,47 @@ function renderWorkflowStatus() {
   });
 }
 
+function computeReadinessScore(clientData) {
+  if (!clientData) return { score: 0, label: "Not started", tone: "danger" };
+  const ob = clientData.onboarding || {};
+  const pg = clientData.policyGeneration || {};
+  const ra = clientData.riskAssessment || {};
+  const vr = clientData.vendorRisk || {};
+  const cm = clientData.controlMapping || {};
+  const aq = clientData.auditQa || {};
+  const et = clientData.evidenceTracker || {};
+
+  const checks = [
+    // Onboarding (15 pts)
+    { pts: 15, pass: getOnboardingSnapshot(ob).ready },
+    // Policies (20 pts) — all generated + all approved
+    { pts: 10, pass: (pg.policies || []).length > 0 },
+    { pts: 10, pass: getPolicyApprovalStatus(clientData).allApproved },
+    // Risks (15 pts)
+    { pts: 15, pass: (ra.risks || []).length > 0 },
+    // Vendors (15 pts)
+    { pts: 15, pass: (vr.vendors || []).filter(v => v && v.treatment_plan).length > 0 },
+    // Control mapping (15 pts)
+    { pts: 15, pass: (cm.controls || []).length > 0 },
+    // Audit QA (10 pts) — all findings resolved
+    { pts: 10, pass: (() => {
+      const findings = aq.findings || [];
+      return findings.length > 0 && findings.every(f => f.resolution_status === "Resolved" || f.resolution_status === "Accepted");
+    })() },
+    // Evidence tracker (10 pts) — at least half items have evidence location
+    { pts: 10, pass: (() => {
+      const items = et.items || [];
+      if (items.length === 0) return false;
+      return items.filter(i => i.evidence_location).length >= items.length / 2;
+    })() },
+  ];
+
+  const score = checks.reduce((sum, c) => sum + (c.pass ? c.pts : 0), 0);
+  const label = score >= 90 ? "Audit ready" : score >= 70 ? "On track" : score >= 40 ? "In progress" : "Getting started";
+  const tone  = score >= 90 ? "success" : score >= 70 ? "warning" : "danger";
+  return { score, label, tone };
+}
+
 function renderWorkspaceHeader(client) {
   const workflow = getVisibleWorkflow(getWorkflowState(state.selectedClientData));
   const policyApproval = getPolicyApprovalStatus(state.selectedClientData);
@@ -3122,7 +3163,9 @@ function renderWorkspaceHeader(client) {
     deleteClientWorkspace().catch((error) => setStatus(error.message, "error"));
   });
   workspaceActions.appendChild(deleteClientButton);
+  const readiness = computeReadinessScore(state.selectedClientData);
   workspaceStats.innerHTML = `
+    <span class="small-chip readiness-chip readiness-${readiness.tone}">${readiness.score}% — ${readiness.label}</span>
     <span class="small-chip">${workflow.completeCount}/${workflow.states.length} phases complete</span>
     <span class="small-chip">${workflow.onboardingSnapshot.ready ? "Onboarding complete" : "Onboarding in progress"}</span>
     <span class="small-chip">${policyApproval.approvedCount}/${policyApproval.policyCount} policies approved</span>
@@ -4254,6 +4297,52 @@ function renderPhaseStatusSummary(config, phaseState) {
     if (improvementLog && policyProgress.completed) {
       const impPanel = renderImprovementReport(improvementLog);
       if (impPanel) wrapper.appendChild(impPanel);
+    }
+    const prevVersion = state.selectedClientData?.policyGeneration?.previous_version;
+    if (prevVersion && policyProgress.completed) {
+      const pvCard = document.createElement("section");
+      pvCard.className = "info-card status-panel tone-default";
+      const pvHead = document.createElement("div");
+      pvHead.className = "panel-head compact";
+      pvHead.style.cssText = "cursor:pointer;user-select:none;";
+      const pvTitle = document.createElement("h4");
+      pvTitle.textContent = "Previous version";
+      const pvSnap = document.createElement("span");
+      pvSnap.className = "small-chip";
+      pvSnap.style.marginLeft = "8px";
+      const snapDate = prevVersion.snapshotted_at ? new Date(prevVersion.snapshotted_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "unknown date";
+      pvSnap.textContent = snapDate;
+      pvHead.appendChild(pvTitle);
+      pvHead.appendChild(pvSnap);
+      pvCard.appendChild(pvHead);
+      const pvBody = document.createElement("div");
+      pvBody.className = "status-list";
+      pvBody.style.display = "none";
+      const pCount = Array.isArray(prevVersion.policies) ? prevVersion.policies.filter(p => isFilled(p.body)).length : (prevVersion.policy_count || 0);
+      const completedAt = prevVersion.generation_completed_at ? new Date(prevVersion.generation_completed_at).toLocaleString() : "unknown";
+      [
+        `Policies generated: ${pCount}`,
+        `Completed: ${completedAt}`,
+      ].forEach(line => {
+        const item = document.createElement("div");
+        item.className = "status-item";
+        item.textContent = line;
+        pvBody.appendChild(item);
+      });
+      if (Array.isArray(prevVersion.policies)) {
+        prevVersion.policies.filter(p => p && p.name).forEach(p => {
+          const item = document.createElement("div");
+          item.className = "status-item";
+          item.style.paddingLeft = "16px";
+          item.textContent = `• ${p.name}${isFilled(p.body) ? "" : " (empty)"}`;
+          pvBody.appendChild(item);
+        });
+      }
+      pvCard.appendChild(pvBody);
+      pvHead.addEventListener("click", () => {
+        pvBody.style.display = pvBody.style.display === "none" ? "block" : "none";
+      });
+      wrapper.appendChild(pvCard);
     }
     const riskCard = document.createElement("section");
     riskCard.className = "info-card status-panel tone-default";
